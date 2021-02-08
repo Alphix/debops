@@ -1,0 +1,57 @@
+{# Copyright (C) 2022 DebOps <https://debops.org/>
+ # Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+# {{ ansible_managed }}
+#
+# /etc/krb5kdc/kdc.conf
+#
+# The kdc.conf file supplements krb5.conf(5) for programs which are typically
+# only used on a KDC, such as the krb5kdc(8) and kadmind(8) daemons and the
+# kdb5_util(8) programs. Values defined here may also be specified in
+# /etc/krb5.conf; for the KDC programs mentioned, /etc/krb5.conf and this file
+# will be merged into a single configuration profile.
+
+[realms]
+{% for item in kerberos_server__combined_realms | parse_kv_config(name="realm") %}
+{%   if item.realm is defined %}
+        {{ item.realm }} = {
+		database_module = openldap_ldapconf
+	}
+{%   endif %}
+{% endfor %}
+
+[kdcdefaults]
+	spake_preauth_kdc_challenge = edwards25519
+	pkinit_identity = FILE:/etc/pki/realms/kerberos/default.crt,/etc/pki/realms/kerberos/default.key
+	pkinit_anchors = FILE:/etc/pki/realms/kerberos/CA.crt
+
+[dbmodules]
+        openldap_ldapconf = {
+                db_library = kldap
+
+		ldap_kerberos_container_dn = {{ kerberos_server__ldap_realms_dn }}
+
+		# if either of these is false, ldap_kdc_dn needs to
+		# have write access
+		disable_last_success = false
+		disable_lockout  = false
+
+                # this object needs to have read rights on
+                # the realm container, principal container and realm sub-trees
+                ldap_kdc_dn = "{{ kerberos_server__ldap_kdc_binddn }}"
+
+                # this object needs to have read and write rights on
+                # the realm container, principal container and realm sub-trees
+                ldap_kadmind_dn = "{{ kerberos_server__ldap_kadmind_binddn }}"
+
+		# path to the file containing the LDAP bind passwords for the
+		# above objects
+                ldap_service_password_file = /etc/krb5kdc/ldap.stash
+
+                ldap_servers = ldapi:///
+                ldap_conns_per_server = 5
+
+		# ldap_kdc_sasl_mech = EXTERNAL
+		# ldap_kadmind_sasl_mech = EXTERNAL
+        }

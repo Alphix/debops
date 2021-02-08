@@ -1,0 +1,611 @@
+---
+# .. vim: foldmarker=[[[,]]]:foldmethod=marker
+
+# .. Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2019 Maciej Delmanowski <drybjed@gmail.com>
+# .. Copyright (C) 2019-2022 DebOps <https://debops.org/>
+# .. SPDX-License-Identifier: GPL-3.0-only
+
+# .. _kerberos__ref_defaults:
+
+# debops.kerberos default variables
+# =================================
+
+# .. contents:: Sections
+#    :local:
+#
+# .. include:: ../../../../includes/global.rst
+
+
+# Role behaviour [[[
+# ------------------
+
+# .. envvar:: kerberos__enabled [[[
+#
+# Enable or disable support for system-wide Kerberos configuration. By default
+# Kerberos configuration is disabled, but once enabled on a host, the role will
+# keep it that way.
+#
+# In a custom playbook that uses the :ref:`debops.kerberos` role, you can set
+# this variable to ``True`` to strictly enable Kerberos support (for example
+# during initial deployment), or to ``False``, to omit making any changes on a
+# host related to Kerberos (for example if you want to interact only with the
+# Kerberos database).
+kerberos__enabled: '{{ ansible_local.kerberos.enabled | d(False) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__configured [[[
+#
+# This variable is used to detect if the role already applied its default
+# configuration on a host. If it did (or this variable is ``True``) and the
+# role is used as a dependency, the role will skip executing Kerberos tasks
+# defined by default and those defined in the Ansible inventory to avoid
+# creating long lists of tasks. The state is tracked using a fact during
+# runtime.
+kerberos__configured: '{{ ansible_local.kerberos.configured | d(False) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__dependent_play [[[
+#
+# This variable checks if the role is used as a dependent role. If it is (or
+# this variable is ``True``), the role will skip most of its normal tasks and
+# only run the Kerberos tasks defined via the dependent variables.
+kerberos__dependent_play: '{{ True
+                              if (kerberos__configured | bool and
+                                  kerberos__dependent_tasks | d())
+                              else False }}'
+                                                                   # ]]]
+                                                                   # ]]]
+# APT packages [[[
+# ----------------
+
+# .. envvar:: kerberos__base_packages [[[
+#
+# List of default APT packages to install for Kerberos client support.
+kerberos__base_packages:
+  - 'krb5-user'
+  - 'libsasl2-modules-gssapi-mit'
+  - '{{ [ "krb5-pkinit" ] if kerberos__pki | d(False) else [] }}'
+  - '{{ [ "p11-kit" ] if kerberos__smartcard | d(False) else [] }}'
+  - '{{ [ kerberos__smartcard_driver_packages | d([]) ] if kerberos__smartcard | d(False) else [] }}'
+  - '{{ [ kerberos__smartcard_gdm_packages | d([]) ] if kerberos__smartcard_gdm | d(False) else [] }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__packages [[[
+#
+# List of additional APT packages to install together with the Kerberos client
+# support.
+kerberos__packages: []
+                                                                   # ]]]
+                                                                   # ]]]
+# DNS and network configuration [[[
+# ---------------------------------
+# This role uses several DNS ``SRV`` and ``TXT`` resource records to
+# automatically discover the relevant Kerberos-related configuration for the
+# local realm/domain. See :ref:`kerberos__ref_dns` for further details of the
+# variables defined in this section.
+
+# .. envvar:: kerberos__domain [[[
+#
+# The domain used as a basis for the DNS queries.
+kerberos__domain: '{{ ansible_domain }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__realm_txt_rr [[[
+#
+# A list containing the result of the DNS query for Kerberos realm ``TXT``
+# resource records in the host's domain.
+kerberos__realm_txt_rr: '{{ q("dig", "_kerberos."
+                                     + kerberos__domain + "./TXT") }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__realm [[[
+#
+# The name of the default Kerberos realm. This is, by convention, the local
+# domain in uppercase.
+kerberos__realm: '{{ (kerberos__realm_txt_rr[0])
+                     if ("NXDOMAIN" not in kerberos__realm_txt_rr and
+                         kerberos__realm_txt_rr[0])
+                     else (kerberos__domain | upper) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__kdcs_srv_rr [[[
+#
+# A list containing the result of the DNS query query for Kerberos KDC ``SRV``
+# resource records in the host's domain.
+kerberos__kdcs_srv_rr: '{{ q("debops.debops.dig_srv",
+                             "_kerberos._udp." + kerberos__domain,
+                             "kdc." + kerberos__domain, 88) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__kdcs [[[
+#
+# A list of Kerberos KDCs.
+kerberos__kdcs: '{{ kerberos__kdcs_srv_rr | map(attribute="target")
+                    | d(["kdc." + kerberos__domain]) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__master_kdc_srv_rr [[[
+#
+# A list containing the result of the DNS query for Kerberos master KDC ``SRV``
+# resource records in the host's domain.
+kerberos__master_kdc_srv_rr: '{{ q("debops.debops.dig_srv",
+                                   "_kerberos-master._udp." + kerberos__domain,
+                                   kerberos__kdcs[0], 88) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__master_kdc [[[
+#
+# The FQDN of the Kerberos master KDC.
+kerberos__master_kdc: '{{ kerberos__master_kdc_srv_rr[0]["target"] }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__kpasswd_srv_rr [[[
+#
+# A list containing the result of the DNS query query for Kerberos password
+# ``SRV`` resource records in the host's domain.
+kerberos__kpasswd_srv_rr: '{{ q("debops.debops.dig_srv",
+                                "_kpasswd._udp." + kerberos__domain,
+                                kerberos__kdcs[0], 464) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__kpasswd_server [[[
+#
+# The FQDN of the Kerberos password server.
+kerberos__kpasswd_server: '{{ kerberos__kpasswd_srv_rr[0]["target"] }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_srv_rr [[[
+#
+# A list containing the result of the DNS query for Kerberos administration
+# ``SRV`` resource records in the host's domain.
+kerberos__admin_srv_rr: '{{ q("debops.debops.dig_srv",
+                              "_kerberos-adm._tcp." + kerberos__domain,
+                              kerberos__kdcs[0], 749) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_server [[[
+#
+# The FQDN of the Kerberos administration server.
+kerberos__admin_server: '{{ kerberos__admin_srv_rr[0]["target"] }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Kerberos host configuration [[[
+# -------------------------------
+
+# These variables define the Kerberos host principal which the
+# :ref:`debops.kerberos` role will create for a given host it is executed
+# against. The host principal (e.g. ``host/somehost.example.com@EXAMPLE.COM``)
+# serves two purposes. First, it allows the host to verify that tickets were
+# issued by a genuine KDC. Second, it allows clients to verify that they are
+# communicating with the intended host. The host principal serves essentially
+# the same function as a service principal, except that it relates to the host
+# as a whole rather than any specific network service. Examples of services
+# which authenticate using the host principal include ``SSH`` (see
+# :ref:`debops.sshd`).
+
+# .. envvar:: kerberos__host_fqdn [[[
+#
+# The Fully Qualified Domain Name of a given remote host. This value will be
+# used to build the Kerberos principal name for this host.
+kerberos__host_fqdn: '{{ ansible_fqdn }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__host_princ [[[
+#
+# The default Kerberos principal of a given remote host.
+kerberos__host_princ: '{{ "host/" + kerberos__host_fqdn + "@" + kerberos__realm }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__host_enabled [[[
+#
+# Enable or disable management of Kerberos host principals.  Disabling this
+# functionality might make some of the DebOps roles that depend on this
+# principal for accessing the host unusable.
+kerberos__host_enabled: '{{ True if (ansible_local.ldap.device_dn | d())
+                            else False }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# PKI (PKINIT) / Smartcard configuration [[[
+# ------------------------------------------
+
+# .. envvar:: kerberos__pki [[[
+#
+# Enable or disable support for PKINIT using :ref:`debops.pki`.
+kerberos__pki: '{{ ansible_local.pki.enabled | d() | bool }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__pki_path [[[
+#
+# Base PKI directory.
+kerberos__pki_path: '{{ ansible_local.pki.path | d("/etc/pki/realms") }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__pki_realm [[[
+#
+# Default PKI realm.
+# FIXME: Add to facts script
+kerberos__pki_realm: 'kerberos'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__pki_ca [[[
+#
+# Name of the Certificate Authority certificate file, relative to the PKI realm
+# directory.
+# FIXME: Add to facts script
+kerberos__pki_ca: 'CA.crt'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__pki_ca [[[
+#
+# Name of the Certificate Authority certificate file, relative to the PKI realm
+# directory.
+# FIXME: Add to facts script
+kerberos__pki_ca_path: '{{ kerberos__pki_path
+                           + "/" + kerberos__pki_realm
+                           + "/" + kerberos__pki_ca }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__smartcard [[[
+#
+# Enable or disable support for smartcard authentication (depends on
+# :envvar:`kerberos__pki` being enabled).
+kerberos__smartcard: False
+
+                                                                   # ]]]
+# .. envvar:: kerberos__smartcard_driver_packages [[[
+#
+# APT package(s) containing the driver(s) necessary to communicate with the
+# user's smartcard.
+kerberos__smartcard_driver_packages: [ 'opensc-pkcs11' ]
+
+                                                                   # ]]]
+# .. envvar:: kerberos__smartcard_gdm [[[
+#
+# Should `GDM`__ be installed and configured to permit smartcard-based
+# graphical logins? If enabled, the :ref:`debops.sssd` role should also be
+# configured for the given host(s).
+#
+# .. __: https://help.gnome.org/admin/gdm/stable/overview.html.en
+kerberos__smartcard_gdm: False
+
+                                                                   # ]]]
+# .. envvar:: kerberos__smartcard_gdm_packages [[[
+#
+# List of additional APT packages to install when smartcard-based logins
+# via GDM are enabled.
+kerberos__smartcard_gdm_packages: [ 'gdm3', 'libnss3-tools' ]
+
+                                                                   # ]]]
+# .. envvar:: kerberos__smartcard_gdm_pam [[[
+#
+# The PAM configuration to use for GDM, currently known alternatives are
+# ``gdm-smartcard-sssd-exclusive``, ``gdm-smartcard-sssd-or-password`` and
+# ``gdm-smartcard-pkcs11-exclusive``.
+kerberos__smartcard_gdm_pam: 'gdm-smartcard-sssd-exclusive'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# System-wide Kerberos configuration [[[
+# --------------------------------------
+
+# These variables define the contents of the :file:`/etc/krb5.conf`
+# configuration file. See :ref:`kerberos__ref_configuration` for more details.
+
+# .. envvar:: kerberos__default_configuration [[[
+#
+# List of the default configuration options for system-wide Kerberos support,
+# defined by the role.
+kerberos__default_configuration:
+
+  - section: 'libdefaults'
+    options:
+
+    - name: 'default_realm'
+      value: '{{ kerberos__realm }}'
+
+    - name: 'dns_lookup_realm'
+      value: 'false'
+
+    - name: 'dns_lookup_kdc'
+      value: 'false'
+
+    - name: 'dns_canonicalize_hostname'
+      value: 'fallback'
+      comment: 'Setting this seems to cause issues with SSSD using the hostname instead of the FQDN'
+      state: 'comment'
+
+    - name: 'ticket_lifetime'
+      value: '24h'
+
+    - name: 'renew_lifetime'
+      value: '0'
+      state: 'comment'
+
+    - name: 'forwardable'
+      value: 'true'
+
+    - name: 'proxiable'
+      value: 'true'
+      state: 'comment'
+
+    - name: 'rdns'
+      value: 'false'
+
+    - name: 'default_ccache_name'
+      value: 'KEYRING:persistent:%{uid}'
+      state: 'comment'
+
+    - name: 'spake_preauth_groups'
+      value: 'edwards25519'
+
+    - name: 'pkinit_anchors'
+      value: 'FILE:{{ kerberos__pki_ca_path }}'
+      state: '{{ "present" if kerberos__pki | d(False) else "absent" }}'
+
+  - section: 'realms'
+    options:
+
+    - name: '{{ kerberos__realm }}'
+      options:
+
+      - name: 'kdc'
+        value: '{{ kerberos__kdcs }}'
+
+      - name: 'master_kdc'
+        value: '{{ kerberos__master_kdc }}'
+
+      - name: 'kpasswd_server'
+        value: '{{ kerberos__kpasswd_server }}'
+
+      - name: 'admin_server'
+        value: '{{ kerberos__admin_server }}'
+
+      - name: 'disable_encrypted_timestamp'
+        value: 'true'
+        comment: 'Disable downgrade attacks against SPAKE'
+
+      - name: 'pkinit_identities'
+        value: 'PKCS11:p11-kit-proxy.so'
+        state: '{{ "present" if kerberos__smartcard | d(False) else "absent" }}'
+
+      - name: 'pkinit_cert_match'
+        value: '<EKU>pkinit'
+        state: '{{ "present" if kerberos__smartcard | d(False) else "absent" }}'
+
+      - name: 'auth_to_local'
+        value:
+          - 'RULE:[2:$1;$2](^.*;{{ kerberos__admin_princ_instance }}$)s/;{{ kerberos__admin_princ_instance }}$//'
+          - 'DEFAULT'
+        comment: |-
+          First, principals like foobar/admin@EXAMPLE.COM are mapped to foobar
+          Second, principals like foobar@EXAMPLE.COM are mapped to foobar
+          These rules are used by programs like gssproxy.
+
+# ]]]
+# .. envvar:: kerberos__configuration [[[
+#
+# List of the configuration options for system-wide Kerberos support, defined
+# on all hosts in the Ansible inventory.
+kerberos__configuration: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos__group_configuration [[[
+#
+# List of the configuration options for system-wide Kerberos support, defined
+# on hosts in a specific Ansible inventory group.
+kerberos__group_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos__host_configuration [[[
+#
+# List of the configuration options for system-wide Kerberos support, defined
+# on specific hosts in the Ansible inventory.
+kerberos__host_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos__combined_configuration [[[
+#
+# The variable which combines all other system-wide configuration variables and
+# is used in the Ansible tasks and templates.
+kerberos__combined_configuration: '{{ kerberos__default_configuration
+                                      + kerberos__configuration
+                                      + kerberos__group_configuration
+                                      + kerberos__host_configuration }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Kerberos administrative access [[[
+# ------------------------------
+
+# These variables define configuration of the administrative access to the
+# Kerberos directory, required to perform Kerberos tasks by Ansible on behalf
+# of the system administrator. See :ref:`kerberos__ref_admin` for more details.
+
+# .. envvar:: kerberos__admin_enabled [[[
+#
+# Enable or disable support for performing Kerberos tasks on behalf of the
+# Kerberos Administrator. This feature will be enabled if the keytab is
+# available to allow connecting to the Kerberos administrative server
+# (:command:`kadmind`).
+kerberos__admin_enabled: '{{ True if kerberos__fact_admin_keytab|d() else False }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_passwordstore_path [[[
+#
+# The relative path in the :command:`pass` password database, where personal
+# Kerberos credentials can be found by the role. See
+# FIXME : ``kerberos__ref_admin_pass`` for more details. This variable can be used
+# in Ansible playbooks that use :ref:`debops.kerberos` to create and update
+# admin credentials.
+kerberos__admin_passwordstore_path: 'debops/kerberos/credentials'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_princ_instance [[[
+#
+# The instance used to qualify administrator principals (for example, the
+# instance of ``john/admin@EXAMPLE.COM`` is ``admin``).
+kerberos__admin_princ_instance: 'admin'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_princ [[[
+#
+# The Kerberos principal of the personal account of the person who uses the
+# Ansible playbooks. By default derived from the local UNIX account name which
+# is assumed to have a corresponding ``<name>/admin@REALM`` principal. This
+# principal should should have sufficient privileges to manage the Kerberos
+# principals operated on by the playbooks.
+kerberos__admin_princ: '{{ lookup("env", "DEBOPS_KRB_ADMIN_PRINC")
+                           | d(lookup("env", "USER")
+                               + "/" + kerberos__admin_princ_instance
+                               + "@" + kerberos__realm, True) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_keytab_path [[[
+#
+# The path to the Kerberos keytab which will be used for administrative tasks.
+# It can be overridden on the Ansible Controller through use of the environment
+# variables.
+kerberos__admin_keytab_path: '{{ lookup("env", "DEBOPS_KRB_ADMIN_KEYTAB")
+                                 | d(secret + "/kerberos/admin.keytab",
+                                     True) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__local_keytab [[[
+#
+# The path where to store Kerberos keytabs on the controller before they are
+# transferred to remote hosts. It can be overridden on the Ansible Controller
+# through use of the environment variables.
+kerberos__local_keytab_base_path: '{{ lookup("env", "DEBOPS_KRB_LOCAL_KEYTAB_BASE")
+                                      | d(secret + "/kerberos/"
+                                          + inventory_hostname_short, True) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_keytab [[[
+#
+# The path to the Kerberos keytab which will be used for administrative tasks,
+# as detected at runtime (see :envvar:`kerberos__admin_keytab_path`).
+kerberos__admin_keytab: '{{ kerberos__admin_keytab_path
+                            if query("first_found", [ kerberos__admin_keytab_path ], errors="ignore")|d()
+                            else "" }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_krb_conf_path [[[
+#
+# The Kerberos :file:`krb5.conf` file which will be stored on the Ansible
+# Controller and used for administrative tasks. It can be overridden on the
+# Ansible Controller through use of the environment variables.
+kerberos__admin_krb_conf_path: '{{ lookup("env", "DEBOPS_KRB_ADMIN_KRB5_CONFIG")
+                                   | d(secret + "/kerberos/krb5.conf", True) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_pw [[[
+#
+# The Kerberos password value which will be used for administrative tasks.
+# It can be overridden on the Ansible Controller through use of the environment
+# variables.
+kerberos__admin_pw: '{{ lookup("env", "DEBOPS_KRB_ADMIN_PW")
+                        | d(lookup("passwordstore",
+                                   kerberos__admin_passwordstore_path
+                                   + "/" + (kerberos__admin_princ | to_uuid)
+                                   + " create=false", errors="ignore"),
+                            True) }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_delegate_to [[[
+#
+# By default all Kerberos tasks are delegated to the Ansible Controller to
+# allow access to credentials stored locally by the current Ansible user. This
+# variable allows to delegate to another host than the Ansible Controller to
+# perform the Kerberos tasks there.
+kerberos__admin_delegate_to: 'localhost'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_become [[[
+#
+# By default the Kerberos tasks delegated to the Ansible Controller will be
+# executed without performing privilege escalation on the Controller host. If
+# you need to to escalate privileges on a remote host to which the Kerberos
+# tasks have been delegated, you can enable this here.
+kerberos__admin_become: False
+
+                                                                   # ]]]
+# .. envvar:: kerberos__admin_become_user [[[
+#
+# Specify the UNIX account to switch to before performing Kerberos tasks,
+# if enabled in the previous variable.
+kerberos__admin_become_user: 'root'
+                                                                   # ]]]
+                                                                   # ]]]
+# Kerberos tasks and operations [[[
+# ---------------------------------
+
+# These variables define a list of Kerberos tasks to perform when
+# administrative access is available. See :ref:`kerberos__ref_tasks` for more
+# details.
+
+# .. envvar:: kerberos__default_tasks [[[
+#
+# List of default Kerberos tasks to perform, defined by the role.
+kerberos__default_tasks:
+
+  - name: 'Ensure that the Kerberos principal {{ kerberos__host_princ }} exists'
+    principal: '{{ kerberos__host_princ }}'
+    path: '/etc/krb5.keytab.d/host.keytab'
+    mode: '0640'
+    owner: 'root'
+    group: 'root'
+    state: '{{ "present" if (kerberos__host_enabled|d(True)) else "ignore" }}'
+    ldap_dn: '{{ (ansible_local.ldap.device_dn | join(","))
+                 if (ansible_local.ldap.device_dn | d())
+                 else "" }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos__tasks [[[
+#
+# List of Keberos tasks to perform, defined on all hosts in the Ansible
+# inventory.
+kerberos__tasks: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos__group_tasks [[[
+#
+# List of Kerberos tasks to perform, defined on hosts in specific Ansible
+# inventory group.
+kerberos__group_tasks: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos__host_tasks [[[
+#
+# List of Kerberos tasks to perform, defined on specific hosts in the Ansible
+# inventory.
+kerberos__host_tasks: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos__dependent_tasks [[[
+#
+# List of Kerberos tasks to perform, defined by other Ansible roles or
+# playbooks.
+kerberos__dependent_tasks: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos__combined_tasks [[[
+#
+# The variable that combines the lists of Kerberos tasks in other variables and
+# is used in role tasks. By default, the :ref:`debops.kerberos` role will
+# execute Kerberos tasks defined in Ansible inventory when run standalone, and
+# will skip them if it detects the usage as a dependency by another role.
+kerberos__combined_tasks: '{{ kerberos__dependent_tasks
+                              if (kerberos__fact_configured|bool and
+                                  kerberos__dependent_tasks|d())
+                              else (kerberos__default_tasks
+                                    + kerberos__tasks
+                                    + kerberos__group_tasks
+                                    + kerberos__host_tasks
+                                    + kerberos__dependent_tasks) }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+                                                                   # ]]]

@@ -1,0 +1,232 @@
+---
+# Copyright (C) 2021-2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2023 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+- name: Take note of the local keytab path for the current task
+  ansible.builtin.set_fact:
+    kerberos__fact_local_keytab_path: '{{ kerberos__local_keytab_base_path
+                                          + item.path }}'
+
+- name: Check if a local keytab exists for {{ item.path }}
+  ansible.builtin.stat:
+    path: '{{ kerberos__fact_local_keytab_path }}'
+  register: kerberos__register_stat_local_keytab
+  delegate_to: 'localhost'
+  become: False
+
+- name: Check which principals exist in the local keytab
+  environment:
+    KRB5_CONFIG: '{{ kerberos__admin_krb_conf_path }}'
+    LC_MESSAGES: 'C'
+  ansible.builtin.shell: |
+    set -o nounset -o pipefail -o errexit &&
+    klist -k '{{ kerberos__fact_local_keytab_path | quote }}' |
+    sed '1,/^[-[:space:]]*$/d' |
+    sed 's/^\s*[0-9]\+\s*//;s/\s*$//'
+  args:
+    executable: '/bin/bash'
+  register: kerberos__register_existing_principals
+  when: kerberos__register_stat_local_keytab.stat.exists | d(False)
+  changed_when: False
+  delegate_to: 'localhost'
+  become: False
+
+- name: Check the validity of principal {{ item.principal }} in the local keytab
+  environment:
+    KRB5_CONFIG: '{{ kerberos__admin_krb_conf_path }}'
+    LC_MESSAGES: 'C'
+  ansible.builtin.command: |
+    kvno -q -k '{{ kerberos__fact_local_keytab_path | quote }}'
+         '{{ item.principal | quote }}'
+  register: kerberos__register_valid_principal
+  when:
+    - item.state | d('present') == 'present'
+    - kerberos__register_stat_local_keytab.stat.exists | d(False)
+    - item.principal in (kerberos__register_existing_principals.stdout_lines | d([]))
+  changed_when: False
+  failed_when: False
+  delegate_to: 'localhost'
+  become: False
+
+- name: Take note of the state of the local keytab
+  ansible.builtin.set_fact:
+    kerberos__fact_local_principals: '{{
+      kerberos__register_existing_principals.stdout_lines | d([]) | unique }}'
+    kerberos__fact_task_principal_present: '{{
+      (kerberos__register_stat_local_keytab.stat.exists | d(False)) and
+      (item.principal in (kerberos__register_existing_principals.stdout_lines | d([]))) }}'
+    kerberos__fact_task_principal_valid: '{{
+      not (kerberos__register_valid_principal.failed | d(True)) }}'
+
+- name: Create principal {{ item.principal }} in the KDC database
+  environment:
+    KRB5_CONFIG: '{{ kerberos__admin_krb_conf_path }}'
+    LC_MESSAGES: 'C'
+  ansible.builtin.command: |
+    kadmin
+     -p {{ kerberos__admin_princ | quote }}
+     -k
+     -t {{ kerberos__admin_keytab | quote }}
+     add_principal
+     -randkey
+     -policy randkey
+     {{ ("-x " + ("dn=" + item.ldap_dn) | quote)
+        if (item.ldap_dn|d())
+        else "" }}
+     {{ ("-x " + ("linkdn=" + item.ldap_linkdn) | quote)
+        if (item.ldap_linkdn|d() and not item.ldap_dn|d())
+        else "" }}
+     {{ ("-x " + ("containerdn=" + item.ldap_containerdn) | quote)
+        if (item.ldap_containerdn|d() and not item.ldap_dn|d())
+        else "" }}
+     {{ item.options | d([]) | map("quote") | join("") }}
+     {{ item.principal | quote }}
+  register: kerberos__task_add_principal
+  changed_when: kerberos__task_add_principal.rc == 0
+  failed_when: kerberos__task_add_principal.rc > 1 or
+               (kerberos__task_add_principal.rc == 1 and
+                'already exists' not in kerberos__task_add_principal.stderr | lower)
+  when:
+    - item.state | d('present') == 'present'
+    - not kerberos__fact_task_principal_valid
+  delegate_to: 'localhost'
+  become: False
+
+- name: Remove invalid principal {{ item.principal }} from local keytab
+  environment:
+    KRB5_CONFIG: '{{ kerberos__admin_krb_conf_path }}'
+    LC_MESSAGES: 'C'
+  ansible.builtin.command: |
+    kadmin
+      -p {{ kerberos__admin_princ | quote }}
+      -k
+      -t {{ kerberos__admin_keytab | quote }}
+      ktremove
+      -k {{ kerberos__fact_local_keytab_path | quote }}
+      {{ item.principal | quote }}
+      all
+  when:
+    - item.state | d('present') == 'present'
+    - kerberos__fact_task_principal_present
+    - not kerberos__fact_task_principal_valid
+  delegate_to: 'localhost'
+  become: False
+
+- name: Create directory for local keytab
+  ansible.builtin.file:
+    path: '{{ kerberos__fact_local_keytab_path | dirname }}'
+    state: 'directory'
+  when:
+    - item.state | d('present') == 'present'
+    - not kerberos__fact_task_principal_valid
+  delegate_to: 'localhost'
+  become: False
+
+- name: Add principal {{ item.principal }} to local keytab
+  environment:
+    KRB5_CONFIG: '{{ kerberos__admin_krb_conf_path }}'
+    LC_MESSAGES: 'C'
+  ansible.builtin.command: |
+    kadmin
+      -p {{ kerberos__admin_princ | quote }}
+      -k
+      -t {{ kerberos__admin_keytab | quote }}
+      ktadd
+      -k {{ kerberos__fact_local_keytab_path | quote }}
+      {{ item.principal | quote }}
+  when:
+    - item.state | d('present') == 'present'
+    - not kerberos__fact_task_principal_valid
+  delegate_to: 'localhost'
+  become: False
+
+- name: Remove principal {{ item.principal }} from local keytab
+  environment:
+    KRB5_CONFIG: '{{ kerberos__admin_krb_conf_path }}'
+    LC_MESSAGES: 'C'
+  ansible.builtin.command: |
+    kadmin
+      -p {{ kerberos__admin_princ | quote }}
+      -k
+      -t {{ kerberos__admin_keytab | quote }}
+      ktremove
+      -k '{{ kerberos__fact_local_keytab_path | quote }}'
+      {{ item.principal | quote }}
+      all
+  when:
+    - item.state | d('present') == 'absent'
+    - item.principal in kerberos__fact_local_principals
+    - kerberos__fact_local_principals | difference([item.principal]) | length > 0
+  delegate_to: 'localhost'
+  become: False
+
+- name: Copy local keytab to {{ item.path }} on remote host
+  ansible.builtin.copy:
+    src: '{{ kerberos__fact_local_keytab_path }}'
+    dest: '{{ item.path }}'
+    owner: '{{ item.owner | d("root") }}'
+    group: '{{ item.group | d("root") }}'
+    mode: '{{ item.mode | d("0640") }}'
+  when: not ansible_check_mode | bool and
+        (item.state | d('present') == 'present' or
+         (item.state | d('present') == 'absent'
+          and item.principal in kerberos__fact_local_principals
+          and kerberos__fact_local_principals | difference([item.principal]) | length > 0))
+
+- name: Remove local keytab
+  ansible.builtin.file:
+    path: '{{ kerberos__fact_local_keytab_path }}'
+    state: 'absent'
+  when:
+    - item.state | d('present') == 'absent'
+    - item.principal in kerberos__fact_local_principals
+    - kerberos__fact_local_principals | difference([item.principal]) | length == 0
+  delegate_to: 'localhost'
+  become: False
+
+- name: Remove remote keytab {{ item.path }}
+  ansible.builtin.file:
+    path: '{{ item.path }}'
+    state: 'absent'
+  when:
+    - item.state | d('present') == 'absent'
+    - item.principal in kerberos__fact_local_principals
+    - kerberos__fact_local_principals | difference([item.principal]) | length == 0
+
+- name: Remove principal {{ item.principal }} from the KDC database
+  environment:
+    KRB5_CONFIG: '{{ kerberos__admin_krb_conf_path }}'
+    LC_MESSAGES: 'C'
+  ansible.builtin.command: |
+    kadmin
+      -p {{ kerberos__admin_princ | quote }}
+      -k
+      -t {{ kerberos__admin_keytab | quote }}
+      delete_principal
+      {{ item.principal | quote }}
+  register: kerberos_register_delete_principal
+  changed_when: kerberos__register_delete_principal.rc == 0
+  failed_when: kerberos__register_delete_principal.rc > 1 or
+               (kerberos__register_delete_principal.rc == 1 and
+                'does not exist' not in kerberos__register_delete_principal.stderr | lower)
+  when:
+    - item.state | d('present') == 'absent'
+    - item.kdc_delete | d(False) | bool
+  delegate_to: 'localhost'
+  become: False
+
+#      - '-allow_postdated'
+#      - '-allow_forwardable'
+#      - '-allow_renewable'
+#      - '-allow_proxiable'
+#      - '-allow_dup_skey'
+#      - '-requires_preauth'
+#      - '-requires_hwauth'
+#      - '-allow_svr'
+#      - '-allow_tgs_req'
+#      - '-allow_tix'
+#      - '-needchange'
+#      - '-ok_as_delegate'
+#      - '+lockdown_keys'
+

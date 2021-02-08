@@ -143,6 +143,8 @@ Databases
 Directory services
 ------------------
 
+- :ref:`debops.kerberos_server`
+- :ref:`debops.kerberos`
 - :ref:`debops.ldap`
 - :ref:`debops.nscd`
 - :ref:`debops.nslcd`

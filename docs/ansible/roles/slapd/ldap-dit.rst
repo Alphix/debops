@@ -85,6 +85,8 @@ Directory structure
         - :ref:`freeradius.schema <slapd__ref_freeradius_schema>`
           (with RADIUS Client/Profile/Accounting, DHCPv4, DHCPv6 schema)
 
+        - :ref:`kerberos.schema <slapd__ref_kerberos_schema>`
+
       - ``olcDatabase={0}config``
 
         - :ref:`olcOverlay={0}syncprov <slapd__ref_syncprov_overlay>` (:ref:`for Multi-Master replication <slapd__ref_syncrepl_multi_master>`)
@@ -114,6 +116,14 @@ Directory structure
         - :ref:`olcOverlay={10}autogroup <slapd__ref_autogroup_overlay>`
 
         - :ref:`olcOverlay={11}lastbind <slapd__ref_lastbind_overlay>`
+
+        - :ref:`olcOverlay={12}memberof <slapd__ref_memberof_overlay>` (for ``krbPrincipal`` LDAP objects)
+
+        - :ref:`olcOverlay={13}memberof <slapd__ref_memberof_overlay>` (for ``krbRealmContainer`` LDAP objects)
+
+        - :ref:`olcOverlay={14}memberof <slapd__ref_memberof_overlay>` (for ``krbRealmContainer`` LDAP objects)
+
+        - :ref:`olcOverlay={15}memberof <slapd__ref_memberof_overlay>` (for ``krbRealmContainer`` LDAP objects)
 
         - :envvar:`olcAccess <slapd__acl_tasks>` (:ref:`documentation <slapd__ref_acl>`)
 

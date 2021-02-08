@@ -101,6 +101,9 @@
 - name: Import keepalived handlers
   ansible.builtin.import_tasks: 'keepalived.yml'
 
+- name: Import kerberos handlers
+  ansible.builtin.import_tasks: 'kerberos.yml'
+
 - name: Import kibana handlers
   ansible.builtin.import_tasks: 'kibana.yml'
 

@@ -1,0 +1,57 @@
+{# Copyright (C) 2019 Maciej Delmanowski <drybjed@gmail.com>
+ # Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2019-2022 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+# {{ ansible_managed }}
+#
+#
+# Kerberos Defaults
+#
+#
+# See krb.conf(5) for details
+{% macro _parse_option(option, first, indent=8) %}
+{%   if option.state|d('present') not in [ 'absent', 'ignore', 'init' ] %}
+{%     if option.comment|d() %}
+{%       if not first %}
+
+{%       endif %}
+{{ option.comment | regex_replace('\n$','') | comment(prefix='', decoration=(' ' * indent + '# '), postfix='') -}}
+{%     endif %}
+{%     if option.options|d() %}
+{{ '{}{} = {}'.format(' ' * indent, (option.option | d(option.name)), '{') }}
+{%       for option in option.options %}
+{{ _parse_option(option, loop.first, indent + 8) -}}
+{%       endfor %}
+{{ '{}{}'.format(' ' * indent, '}') }}
+{%     elif option.raw|d() %}
+{%       if option.state|d('present') == 'comment' %}
+{{ option.raw | regex_replace('\n$','') | comment(prefix='', postfix='') -}}
+{%       else %}
+{{ option.raw | regex_replace('\n$','') }}
+{%       endif %}
+{%     elif option.value is string or option.value is not iterable %}
+{{ '{}{}{} = {}'.format(' ' * indent, ('#' if (option.state|d('present') == 'comment') else ''), (option.option | d(option.name)), option.value) }}
+{%     else %}
+{%       for value in (option.value | selectattr("name", "defined") | map(attribute="name") | list) %}
+{{ '{}{}{} = {}'.format(' ' * indent, ('#' if (option.state|d('present') == 'comment') else ''), (option.option | d(option.name)), value) }}
+{%       endfor %}
+{%     endif %}
+{%   endif %}
+{% endmacro %}
+{% for section in kerberos__combined_configuration | debops.debops.parse_kv_items(name='section') %}
+{%   if section.state|d('present') not in [ 'absent', 'ignore', 'init' ] %}
+
+{%     if section.comment|d() %}
+{{ section.comment | regex_replace('\n$','') | comment(prefix='', postfix='') -}}
+{%     endif %}
+{%     if section.state|d('present') != 'hidden' %}
+{{ "[{}]".format(section.section) }}
+{%     endif %}
+{%     if section.options|d() %}
+{%       for option in section.options %}
+{{ _parse_option(option, loop.first) -}}
+{%       endfor %}
+{%     endif %}
+{%   endif %}
+{% endfor %}

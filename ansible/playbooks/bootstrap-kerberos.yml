@@ -1,0 +1,51 @@
+---
+# Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2022 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+# This playbook can be used to bootstrap a new Debian/Ubuntu host to use
+# Kerberos. It will automatically enable Kerberos support and configure
+# services like 'sshd' to support Kerberos authentication.
+#
+# The configuration applied by this playbook is minimal, and needs to be
+# applied after the DebOps 'bootstrap-sss.yml' playbook. You should still
+# apply the DebOps 'common.yml' afterwards to complete the initial
+# configuration.
+#
+# Usage:
+# To connect directly as root, run:
+#
+#     debops bootstrap-kerberos -u root -k --limit host
+#
+# To connect as normal user and switch to sudo, run:
+#
+#     debops bootstrap-kerberos --become --limit host
+
+
+- import_playbook: 'service/core.yml'
+
+
+- name: Bootstrap host for Ansible management with Kerberos
+  collections: [ 'debops.debops', 'debops.roles01',
+                 'debops.roles02', 'debops.roles03' ]
+  hosts: [ 'debops_all_hosts', 'debops_service_bootstrap' ]
+  become: True
+
+  environment: '{{ inventory__environment | d({})
+                   | combine(inventory__group_environment | d({}))
+                   | combine(inventory__host_environment  | d({})) }}'
+
+  vars:
+
+    # LDAP is a prerequisite for Kerberos support
+    ldap__enabled: True
+
+    kerberos__enabled: True
+
+  roles:
+
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]

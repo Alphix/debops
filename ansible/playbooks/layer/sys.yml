@@ -36,6 +36,9 @@
 - name: Configure OpenLDAP service
   import_playbook: '../service/slapd.yml'
 
+- name: Configure Kerberos service
+  import_playbook: '../service/kerberos_server.yml'
+
 - name: Configure nslcd service
   import_playbook: '../service/nslcd.yml'
 

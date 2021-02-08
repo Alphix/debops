@@ -54,5 +54,10 @@
         - '{{ slapd__saslauthd__dependent_instances }}'
       when: slapd__saslauthd_enabled | bool
 
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__dependent_tasks:
+        - '{{ slapd__kerberos__dependent_tasks }}'
+
     - role: slapd
       tags: [ 'role::slapd', 'skip::slapd' ]

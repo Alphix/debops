@@ -97,7 +97,8 @@
         dn: '{{ [ admin_rdn, ldap__people_rdn ] + ldap__base_dn }}'
         objectClass: [ 'inetOrgPerson', 'posixAccount', 'shadowAccount',
                        'posixGroup', 'posixGroupId', 'ldapPublicKey',
-                       'authorizedServiceObject', 'hostObject' ]
+                       'authorizedServiceObject', 'hostObject',
+                       'krbPrincipalAux', 'krbPrincRefAux' ]
         attributes:
 
           # inetOrgPerson attributes

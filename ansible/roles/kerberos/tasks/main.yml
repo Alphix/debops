@@ -1,0 +1,159 @@
+---
+# Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2019 Maciej Delmanowski <drybjed@gmail.com>
+# Copyright (C) 2019-2022 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+- name: Import custom Ansible plugins
+  ansible.builtin.import_role:
+    name: 'ansible_plugins'
+
+- name: Import DebOps global handlers
+  ansible.builtin.import_role:
+    name: 'global_handlers'
+
+- name: Import DebOps secret role
+  ansible.builtin.import_role:
+    name: 'secret'
+
+- name: Take note of the current Kerberos configuration
+  ansible.builtin.set_fact:
+
+    # Track the changes in the configuration state
+    # between role executions in the same play.
+    kerberos__fact_configured: '{{ kerberos__configured }}'
+
+    # Re-instantiate dependent variables to evaluate variables that use them.
+    # Without this, dependent variables may contain outdated configuration.
+    kerberos__fact_dependent_tasks: '{{ kerberos__dependent_tasks }}'
+  tags: [ 'role::kerberos:tasks', 'skip::kerberos:tasks' ]
+
+- name: Install packages required for Kerberos support
+  ansible.builtin.package:
+    name: '{{ q("flattened", kerberos__base_packages + kerberos__packages) }}'
+    state: 'present'
+  register: kerberos__register_packages
+  until: kerberos__register_packages is succeeded
+  when: kerberos__enabled | bool and not kerberos__dependent_play | bool
+
+- name: Divert the original Kerberos configuration
+  dpkg_divert:
+    path: '/etc/krb5.conf'
+  when: kerberos__enabled | bool and not kerberos__dependent_play | bool
+
+- name: Generate basic Kerberos configuration
+  ansible.builtin.template:
+    src: 'etc/krb5.conf.j2'
+    dest: '/etc/krb5.conf'
+    mode: '0644'
+  when: kerberos__enabled | bool and not kerberos__dependent_play | bool
+
+- name: Create the Kerberos keytab directory
+  ansible.builtin.file:
+    path: '/etc/krb5.keytab.d'
+    state: 'directory'
+    mode: '0755'
+  when: kerberos__enabled | bool and not kerberos__dependent_play | bool
+
+- name: Create a symlink for the default keytab
+  ansible.builtin.file:
+    src: './krb5.keytab.d/host.keytab'
+    dest: '/etc/krb5.keytab'
+    state: 'link'
+    force: True
+    follow: False
+  when: kerberos__enabled | bool and not kerberos__dependent_play | bool
+
+# Note: all of this can go away once GSD has native support for p11-kit, see:
+# https://gitlab.gnome.org/GNOME/gnome-settings-daemon/-/merge_requests/208
+- name: Create the Network Security Services (NSS) configuration directory
+  ansible.builtin.file:
+    path: '/etc/pki/nssdb'
+    state: 'directory'
+    mode: '0755'
+  when:
+    - kerberos__enabled | bool
+    - not kerberos__dependent_play | bool
+    - kerberos__smartcard_gdm | bool
+
+- name: Create an empty NSS database
+  ansible.builtin.command:
+    cmd: modutil -dbdir sql:/etc/pki/nssdb -create -force
+    creates: '/etc/pki/nssdb/pkcs11.txt'
+  when:
+    - kerberos__enabled | bool
+    - not kerberos__dependent_play | bool
+    - kerberos__smartcard_gdm | bool
+
+- name: Check if the NSS database includes the p11-kit module
+  ansible.builtin.lineinfile:
+    path: '/etc/pki/nssdb/pkcs11.txt'
+    regexp: '^\s*library\s*=\s*[^\s]*p11-kit-proxy.so\s*$'
+    state: 'present'
+  check_mode: True
+  changed_when: False
+  register: kerberos__register_nssdb_module
+  when:
+    - kerberos__enabled | bool
+    - not kerberos__dependent_play | bool
+    - kerberos__smartcard_gdm | bool
+
+- name: Add the p11-kit module to the NSS database
+  ansible.builtin.command:
+    cmd: modutil -dbdir sql:/etc/pki/nssdb -add p11-kit-proxy -libfile p11-kit-proxy.so -force
+  when:
+    - kerberos__enabled | bool
+    - not kerberos__dependent_play | bool
+    - kerberos__smartcard_gdm | bool
+    - not (kerberos__register_nssdb_module.found | d(False))
+
+- name: Configure GDM PAM smartcard policy
+  community.general.alternatives:
+    name: 'gdm-smartcard'
+    path: '/etc/pam.d/{{ kerberos__smartcard_gdm_pam }}'
+  when:
+    - kerberos__enabled | bool
+    - not kerberos__dependent_play | bool
+    - kerberos__smartcard_gdm | bool
+
+- name: Make sure that the Ansible local facts directory exists
+  ansible.builtin.file:
+    path: '/etc/ansible/facts.d'
+    state: 'directory'
+    mode: '0755'
+  when: kerberos__enabled | bool and not kerberos__dependent_play | bool
+
+- name: Save Kerberos client local facts
+  ansible.builtin.template:
+    src: 'etc/ansible/facts.d/kerberos.fact.j2'
+    dest: '/etc/ansible/facts.d/kerberos.fact'
+    mode: '0755'
+  notify: [ 'Refresh host facts' ]
+  when: kerberos__enabled | bool and not kerberos__dependent_play | bool
+
+- name: Update Ansible facts if they were modified
+  ansible.builtin.meta: 'flush_handlers'
+
+- name: Check if the Kerberos admin keytab is available
+  ansible.builtin.set_fact:
+    kerberos__fact_admin_keytab: '{{ kerberos__admin_keytab }}'
+  become: False
+  delegate_to: 'localhost'
+  run_once: True
+  tags: [ 'role::kerberos:tasks', 'skip::kerberos:tasks' ]
+
+- name: Perform Kerberos tasks
+  ansible.builtin.include_tasks: 'kerberos_tasks.yml'
+  loop: '{{ q("flattened", kerberos__combined_tasks) | debops.debops.parse_kv_items }}'
+  loop_control:
+    label: '{{ {"state": item.state,
+                "principal": item.principal,
+                "path": item.path } }}'
+  when:
+    - kerberos__enabled | bool
+    - kerberos__admin_enabled | bool
+    - item.name | d()
+    - item.principal | d()
+    - item.path | d()
+    - item.state | d('present') not in [ 'init', 'ignore' ]
+  tags: [ 'role::kerberos:tasks', 'skip::kerberos:tasks' ]

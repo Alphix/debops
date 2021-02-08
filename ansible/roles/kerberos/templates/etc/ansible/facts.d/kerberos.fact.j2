@@ -1,0 +1,143 @@
+#!{{ ansible_python['executable'] }}
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2019 Maciej Delmanowski <drybjed@gmail.com>
+# Copyright (C) 2019-2022 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+# {{ ansible_managed }}
+
+from __future__ import print_function
+from json import dumps, loads
+import os
+
+config_file = '/etc/krb5.conf'
+
+output = loads('''{{ {"configured": False,
+                      "enabled": kerberos__enabled|bool,
+		              "default_realm": kerberos__realm
+                     } | to_nice_json }}''')
+
+def to_bool(value):
+    value = value.strip().lower()
+    if value in [ 'true', '1' ]:
+        return True
+    elif value in [ 'false', '0' ]:
+        return False
+    else:
+        raise Exception("Invalid boolean value")
+
+def read_file(config_file):
+    try:
+        section = None
+        realm = None
+        realm_opts = None
+        realms = {}
+        output['realms'] = realms
+
+        with open(config_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+
+                if line.startswith('[') and line.endswith(']'):
+                    if realm is not None:
+                        raise Exception("New section in realm definition")
+                    section = line.strip("[] ")
+                    continue
+
+                if section is None:
+                    raise Exception("No section defined")
+
+                elif section == 'libdefaults':
+                    line = line.split("=")
+                    key = line[0].strip().lower()
+
+                    if key in [ 'dns_lookup_realm', 'dns_lookup_kdc',
+                                'forwardable', 'proxiable', 'rdns' ]:
+                        value = to_bool(line[1].strip())
+                        output.update({key: value})
+
+                    elif key in [ 'default_realm', 'default_ccache_name',
+                                  'ticket_lifetime', 'renew_lifetime' ]:
+                        value = line[1].strip()
+                        output.update({key: value})
+
+                    elif key in [ 'pkinit_anchors' ]:
+                        value = line[1].strip()
+                        output.update({key: output.get(key, []) + [ value ]})
+
+                    else:
+                        continue
+
+                elif section == 'realms':
+                    if realm is None:
+                        line = line.split('=')
+                        if len(line) != 2 or line[1].strip() != '{':
+                            raise Exception("Invalid realm definition")
+
+                        realm = line[0].strip()
+                        realm_opts = { 'kdc': [],
+                                       'pki': False,
+                                       'pki_smartcard': False }
+                        continue
+
+                    elif line == '}':
+                        realms[realm] = realm_opts
+                        output['realms'] = realms
+                        realm = None
+                        realm_opts = None
+                        continue
+
+                    else:
+                        line = line.split('=')
+                        key = line[0].strip().lower()
+                        value = line[1].strip()
+
+                        if key == 'kdc':
+                            realm_opts['kdc'].append(value)
+
+                        elif key in [ 'admin_server', 'master_kdc',
+                                      'pkinit_cert_match' ]:
+                            realm_opts[key] = value
+
+                        elif key in [ 'pkinit_anchors' ]:
+                            realm_opts.update({key: realm_opts.get(key, []) + [ value ]})
+                            realm_opts['pki'] = True
+
+                        elif key in [ 'pkinit_identities' ]:
+                            realm_opts[key] = value
+                            if value.startswith('PKCS11'):
+                                realm_opts['pki_smartcard'] = True
+
+                        continue
+
+                else:
+                    continue
+
+        if output['enabled']:
+            output['configured'] = True
+
+    except Exception as e:
+        print("Exception: " + str(e) + str(line))
+        pass
+
+read_file(config_file)
+
+if 'pkinit_anchors' in output:
+    for realm, realm_opts in output['realms'].items():
+        realm_opts['pki'] = True
+
+if 'pkinit_identities' in output:
+    if output['pkinit_identities'].startswith('PKCS11'):
+        for realm, realm_opts in output['realms'].items():
+            realm_opts['pki_smartcard'] = True
+
+if 'default_realm' in output and output['default_realm'] in output['realms']:
+    output['default_realm_opts'] = output['realms'][output['default_realm']]
+else:
+    output['default_realm_opts'] = {}
+
+print(dumps(output, sort_keys=True, indent=4))

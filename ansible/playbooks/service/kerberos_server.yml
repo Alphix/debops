@@ -1,0 +1,75 @@
+---
+# Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2022 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+- name: Manage Kerberos service
+  collections: [ 'debops.debops', 'debops.roles01',
+                 'debops.roles02', 'debops.roles03' ]
+  hosts: [ 'debops_service_kerberos_server',
+           'debops_service_kerberos_server_primary',
+           'debops_service_kerberos_server_secondary' ]
+  become: True
+
+  environment: '{{ inventory__environment | d({})
+                   | combine(inventory__group_environment | d({}))
+                   | combine(inventory__host_environment  | d({})) }}'
+
+  vars:
+
+    ldap__enabled: True
+
+    kerberos__enabled: True
+
+    kerberos__combined_tasks: []
+
+  pre_tasks:
+
+    - name: Prepare the PKI environment
+      ansible.builtin.import_role:
+        name: 'pki'
+        tasks_from: 'main_env'
+      vars:
+        pki_dependent_realms:
+          - '{{ kerberos_server__pki__dependent_realms }}'
+      tags: [ 'role::pki', 'role::pki:secret', 'role::secret' ]
+
+  roles:
+
+    - role: secret
+      tags: [ 'role::secret', 'role::pki', 'role::pki:secret' ]
+      secret_directories:
+        - '{{ pki_env_secret_directories }}'
+
+    - role: ferm
+      tags: [ 'role::ferm', 'skip::ferm' ]
+      ferm__dependent_rules:
+        - '{{ kerberos_server__ferm__dependent_rules }}'
+
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+      ldap__dependent_tasks:
+        - '{{ kerberos_server__ldap__dependent_tasks }}'
+
+    - role: pki
+      tags: [ 'role::pki', 'skip::pki' ]
+      pki_dependent_authorities:
+        - '{{ kerberos_server__pki__dependent_authorities }}'
+      pki_dependent_realms:
+        - '{{ kerberos_server__pki__dependent_realms }}'
+
+    # We only want the basic configuration to be setup
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__combined_tasks: []
+
+    - role: kerberos_server
+      tags: [ 'role::kerberos_server', 'skip::kerberos_server' ]
+
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+      ldap__dependent_tasks:
+        - '{{ kerberos_server__ldap__dependent_realm_tasks }}'

@@ -1,0 +1,123 @@
+---
+# Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2022 DebOps <https://debops.org/>
+# SPDX-License-Indentifier: GPL-3.0-only
+
+- name: Check if realm {{ item.realm }} already exists
+  ansible.builtin.stat:
+    path: '{{ kerberos_server__remote_stash_path_base + item.realm }}'
+  register: kerberos_server__register_stash
+  when: kerberos_server__primary | d(False) | bool
+  tags: [ 'role::kerberos_server:realms:create', 'skip::kerberos_server:realms:create' ]
+
+# The utility for creating Kerberos realms in a LDAP directory
+# is not very friendly to scripting. In order to avoid having
+# to specify a password on the command line, we therefore have
+# to do a little song and dance...
+
+- name: Generate master DB key for realm {{ item.realm }}
+  ansible.builtin.copy:
+    content: '{{ lookup("password", "/dev/null chars=ascii_letters,digits length=64") }}'
+    dest: '/etc/krb5kdc/master.key'
+    owner: 'root'
+    group: 'root'
+    mode: '0400'
+  when:
+    - kerberos_server__primary | d(False) | bool
+    - not kerberos_server__register_stash.stat.exists
+  tags: [ 'role::kerberos_server:realms:create', 'skip::kerberos_server:realms:create' ]
+
+#-m -s -H ldapi:///
+- name: Create realm {{ item.realm }}
+  ansible.builtin.shell: set -o nounset -o pipefail -o errexit &&
+    cat /etc/krb5kdc/master.key |
+    sed 's/\(.*\)/\1\n\1\n/' |
+    kdb5_ldap_util create
+    -r {{ item.realm | quote }}
+    -subtrees {{ item.subtrees | flatten | join(':') | quote }}
+    -sscope {{ item.sscope | quote }}
+    -m -s
+  args:
+    executable: 'bash'
+  when:
+    - kerberos_server__primary | d(False) | bool
+    - not kerberos_server__register_stash.stat.exists
+  tags: [ 'role::kerberos_server:realms:create', 'skip::kerberos_server:realms:create' ]
+
+- name: Remove master DB key for realm {{ item.realm }}
+  ansible.builtin.file:
+    path: '/etc/krb5kdc/master.key'
+    state: 'absent'
+  when:
+    - kerberos_server__primary | d(False) | bool
+    - not kerberos_server__register_stash.stat.exists
+  tags: [ 'role::kerberos_server:realms:create', 'skip::kerberos_server:realms:create' ]
+
+- name: Create local copy of stash file for realm {{ item.realm }}
+  ansible.builtin.fetch:
+    src: '{{ kerberos_server__remote_stash_path_base + item.realm }}'
+    dest: '{{ kerberos_server__local_stash_path_base + item.realm }}'
+    flat: True
+  run_once: True
+  when:
+    - kerberos_server__primary | d(False) | bool
+    - not kerberos_server__register_stash.stat.exists
+  tags: [ 'role::kerberos_server:realms:create', 'skip::kerberos_server:realms:create' ]
+
+- name: Copy stash file for realm {{ item.realm }} to secondary server
+  ansible.builtin.copy:
+    src: '{{ kerberos_server__local_stash_path_base + item.realm }}'
+    dest: '{{ kerberos_server__remote_stash_path_base + item.realm }}'
+    owner: 'root'
+    group: 'root'
+    mode: '0600'
+  when:
+    - not kerberos_server__primary | d(False) | bool
+  notify: [ 'Restart krb5-kdc' ]
+  tags: [ 'role::kerberos_server:realms:config', 'skip::kerberos_server:realms:config' ]
+
+- name: Perform setup tasks for realm {{ item.realm }}
+  ansible.builtin.command: kadmin.local -q {{ task.command | quote }}
+  loop: '{{ item.kadmind_tasks }}'
+  loop_control:
+    loop_var: 'task'
+    label: '{{ task.name }}'
+  when:
+    - kerberos_server__primary | d(False) | bool
+    - item.kadmind_tasks | d()
+    - task.name | d()
+    - task.command | d()
+    - task.state | d('present') not in [ 'init', 'ignore', 'absent' ]
+  register: kerberos_server__task_register
+  changed_when: kerberos_server__task_register.rc == 0 and
+                'Already exists' not in kerberos_server__task_register.stderr
+  failed_when: kerberos_server__task_register.rc > 1 or
+               (item.state|d('present') == 'present' and
+                kerberos_server__task_register.rc == 1 and
+                'already exists' not in kerberos_server__task_register.stderr and
+                'Database store error' not in kerberos_server__task_register.stderr) or
+               (item.state|d('present') == 'absent' and
+                kerberos_server__task_register.rc == 1 and
+                'does not exist' not in kerberos_server__task_register.stderr)
+  no_log: '{{ debops__no_log
+              | d(task.no_log
+                  | d(True
+                    if (task.command | regex_search("^(add_principal|addprinc|ank).*[\s]-pw[\s]"))
+                    else False)) }}'
+  tags: [ 'role::kerberos_server:realms:config', 'skip::kerberos_server:realms:config' ]
+
+
+- name: Register LDAP tasks to be peformed for realm {{ item.realm }}
+  ansible.builtin.set_fact:
+    kerberos_server__ldap__dependent_realm_tasks: '{{
+      kerberos_server__ldap__dependent_realm_tasks + [ task ] }}'
+  loop: '{{ item.ldap_tasks }}'
+  loop_control:
+    loop_var: 'task'
+    label: '{{ task.name }}'
+  when:
+    - item.ldap_tasks | d()
+    - task.name | d()
+    - task.dn | d()
+    - task.state | d('present') not in [ 'init', 'ignore', 'absent' ]
+  tags: [ 'role::kerberos_server:realms:ldap', 'skip::kerberos_server:realms:ldap' ]

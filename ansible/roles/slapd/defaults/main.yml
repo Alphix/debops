@@ -2,7 +2,8 @@
 # .. vim: foldmarker=[[[,]]]:foldmethod=marker
 
 # .. Copyright (C) 2016-2020 Maciej Delmanowski <drybjed@gmail.com>
-# .. Copyright (C) 2016-2020 DebOps <https://debops.org/>
+# .. Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2016-2022 DebOps <https://debops.org/>
 # .. SPDX-License-Identifier: GPL-3.0-only
 
 # .. _slapd__ref_defaults:
@@ -112,6 +113,9 @@ slapd__default_schemas:
 
   # FreeRADIUS DHCPv6 schema
   - '{{ slapd__debops_schema_path + "/freeradius-dhcpv6.schema" }}'
+
+  # Kerberos schema
+  - '{{ slapd__debops_schema_path + "/kerberos.schema" }}'
 
                                                                    # ]]]
 # .. envvar:: slapd__schemas [[[
@@ -567,6 +571,7 @@ slapd__default_tasks:
         - 'ldap:///{{ slapd__basedn }}?mail?sub'
         - 'ldap:///{{ slapd__basedn }}?mailAddress,mailAlternateAddress?sub'
         - 'ldap:///{{ slapd__basedn }}?mailPrivateAddress?sub'
+        - 'ldap:///{{ slapd__basedn }}?krbPrincipalName?sub'
         - 'ldap:///ou=People,{{ slapd__basedn }}?employeeNumber?sub'
         - 'ldap:///ou=People,{{ slapd__basedn }}?uid?sub'
         - 'ldap:///ou=People,{{ slapd__basedn }}?gid?sub'
@@ -782,6 +787,8 @@ slapd__default_tasks:
         - 'mailAddress eq,sub'
         - 'mailPrivateAddress eq,sub'
         - 'mailAlternateAddress eq,sub'
+        - 'krbPrincipalName eq,pres,sub'
+        - 'krbPrincipalReferences eq'
 
   - name: 'Enable the monitor database'
     dn: 'olcDatabase={2}monitor,cn=config'
@@ -935,12 +942,226 @@ slapd__acl_tasks:
           by group/organizationalRole/roleOccupant.exact="cn=SMS Gateway, ou=Roles,{{ slapd__basedn }}" read
           by * none
 
+        # Kerberos authentication - see LDAP search in olcAuthzRegexp
+        - |-
+          to dn.regex="^(ou=(People|Hosts|Machines),)?{{ slapd__basedn }}$"
+            attrs="entry"
+          by anonymous auth
+          by * break
+
+        # Kerberos authentication - see LDAP search in olcAuthzRegexp
+        - |-
+          to dn.regex="^.+,ou=(People|Hosts|Machines),{{ slapd__basedn }}$"
+            filter="(|(objectClass=krbPrincRefAux)(objectClass=krbPrincipalAux))"
+            attrs="entry,objectClass,krbPrincipalName,krbPrincipalReferences"
+          by anonymous auth
+          by * break
+
+        # Kerberos principals outside realm - all KDCs write access
+        - |-
+          to dn.regex="^.+,ou=(People|Hosts|Machines),{{ slapd__basedn }}$"
+            filter="(objectClass=krbPrincipalAux)"
+            attrs="krbLastSuccessfulAuth,krbLoginFailedCount,krbLastFailedAuth,krbExtraData"
+          by dn.regex="cn=kdc,cn=[^,]+,ou=Hosts,{{ slapd__basedn }}$" write
+          by * break
+
+        # Kerberos principals outside realm - all KDCs read access
+        - |-
+          to dn.regex="^.+,ou=(People|Hosts|Machines),{{ slapd__basedn }}$"
+            filter="(objectClass=krbPrincipalAux)"
+            attrs="entry,@krbPrincipalAux,@krbTicketPolicyAux"
+          by dn.regex="cn=kdc,cn=[^,]+,ou=Hosts,{{ slapd__basedn }}$" read
+          by * break
+
+        # Kerberos principals outside realm - all kadminds write access
+        - |-
+          to dn.regex="^.+,ou=(People|Hosts|Machines),{{ slapd__basedn }}$"
+            attrs="entry,objectClass,@krbPrincRefAux,@krbPrincipalAux,@krbTicketPolicyAux"
+          by dn.regex="cn=kadmind,cn=[^,]+,ou=Hosts,{{ slapd__basedn }}$" write
+          by * break
+
+        # Kerberos realms - all kadminds can create new ones
+        - |-
+          to dn.exact="cn=Kerberos,ou=Services,{{ slapd__basedn }}"
+            attrs="children"
+          by dn.regex="cn=kadmind,cn=[^,]+,ou=Hosts,{{ slapd__basedn }}$" write
+          by * break
+
+        # Kerberos realm - creator kadmind have write access unless explicit config
+        - |-
+          to dn.onelevel="cn=Kerberos,ou=Services,{{ slapd__basedn }}"
+            filter="(!(krbAdmServers=*))"
+          by set="this/creatorsName & user" write
+          by * break
+
+        # Kerberos realm - configured kadminds write access
+        - |-
+          to dn.onelevel="cn=Kerberos,ou=Services,{{ slapd__basedn }}"
+            filter="(krbAdmServers=*)"
+          by set="this/krbAdmServers & user" write
+          by * break
+
+        # Kerberos realm - configured kdcs read access
+        - |-
+          to dn.onelevel="cn=Kerberos,ou=Services,{{ slapd__basedn }}"
+          by set="this/krbKdcServers & user" read
+          by * break
+
+        # Kerberos principals inside realm - configured KDCs write access
+        - |-
+          to dn.regex="^(cn|krbPrincipalName)=[^,]+,cn=[^,]+,cn=Kerberos,ou=Services,{{ slapd__basedn }}$"
+            filter="(objectClass=krbPrincipalAux)"
+            attrs="krbLastSuccessfulAuth,krbLoginFailedCount,krbLastFailedAuth,krbExtraData"
+          by set="this/-1/krbKdcServers & user" write
+          by * break
+
+        # Kerberos principals inside realm - configured KDCs read access
+        # FIXME: the catchall regex could be narrower?
+        - |-
+          to dn.regex="^(cn|krbPrincipalName)=[^,]+,cn=[^,]+,cn=Kerberos,ou=Services,{{ slapd__basedn }}$"
+            filter="(objectClass=krbPrincipalAux)"
+            attrs="entry,@krbPrincipalAux,@krbTicketPolicyAux"
+          by set="this/-1/krbKdcServers & user" read
+          by dn.regex="cn=kdc,cn=[^,]+,ou=Hosts,{{ slapd__basedn }}$" read
+          by * break
+
+        # Kerberos principals inside realm - creator/configured kadminds write access
+        # by set="([ldap:///domain=$2,isp=$3,SUFFIX??one?servicemanager=*]/entryDN & user)/service & [$1]" write
+        - |-
+          to dn.regex="^(cn|krbPrincipalName)=[^,]+,cn=[^,]+,cn=Kerberos,ou=Services,{{ slapd__basedn }}$"
+          by set="this/-1/creatorsName & user" write
+          by set="this/-1/krbAdmServers & user" write
+          by * break
+
+        # Catchall (FIXME, hide more stuff, let the user see a bit more)
+        - |-
+          to attrs="krbPrincipalKey"
+          by * none
+
         - |-
           to *
           by users read
           by * none
 
     state: 'exact'
+
+                                                                   # ]]]
+# .. envvar:: slapd__kerberos_tasks [[[
+#
+# Separate list of LDAP tasks meant to be used to configure OpenLDAP with
+# support for being used as a Kerberos database backend.
+slapd__kerberos_tasks:
+
+    # Warning: OpenLDAP v2.4.x requires a restart when this attribute is changed
+    #
+    # Kerberos principals are represented as:
+    #   uid=<primary[/instance]>,[cn=<realm>,]cn=gssapi,cn=auth
+    #
+    # Note that cn=<realm> might be omitted in case the principal realm and the
+    # LDAP server realm are the same:
+    # https://www.openldap.org/doc/admin24/sasl.html#Mapping%20Authentication%20Identities
+
+  - name: 'Define SASL regex matching rules'
+    dn: 'cn=config'
+    attributes:
+      olcAuthzRegexp:
+        - '{0}uid=([^,]*),cn=([^,]*),cn=gssapi,cn=auth ldap:///{{ slapd__basedn }}??sub?(|(&(objectClass=krbPrincipalAux)(krbPrincipalName=$1@$2))(&(objectClass=krbPrincRefAux)(krbPrincipalReferences=krbPrincipalName=$1@$2,cn=$2,cn=Kerberos,ou=Services,{{ slapd__basedn }})))'
+        - '{1}uid=([^,]*),cn=gssapi,cn=auth ldap:///{{ slapd__basedn }}??sub?(|(&(objectClass=krbPrincipalAux)(krbPrincipalName=$1@{{ kerberos__realm }}))(&(objectClass=krbPrincRefAux)(krbPrincipalReferences=krbPrincipalName=$1@{{ kerberos__realm }},cn={{ kerberos__realm }},cn=Kerberos,ou=Services,{{ slapd__basedn }})))'
+        - '{2}uid=([^,]*),cn=[^,]*,cn=auth uid=$1,ou=People,{{ slapd__basedn }}'
+        - '{3}uid=([^,]*),cn=([^,]*),cn=[^,]*,cn=auth ldap:///ou=Hosts,{{ slapd__basedn }}??sub?(&(objectClass=account)(uid=$1)(host=$2))'
+    state: '{{ "exact" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Enable memberOf overlay in the main database for Kerberos Principals'
+    dn: 'olcOverlay={12}memberof,olcDatabase={1}mdb,cn=config'
+    objectClass: [ 'olcOverlayConfig', 'olcMemberOf' ]
+    attributes:
+      olcOverlay: '{12}memberof'
+    state: '{{ "present" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Enable memberOf overlay in the main database for Kerberos KDCs'
+    dn: 'olcOverlay={13}memberof,olcDatabase={1}mdb,cn=config'
+    objectClass: [ 'olcOverlayConfig', 'olcMemberOf' ]
+    attributes:
+      olcOverlay: '{13}memberof'
+    state: '{{ "present" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Enable memberOf overlay in the main database for Kerberos administration servers'
+    dn: 'olcOverlay={14}memberof,olcDatabase={1}mdb,cn=config'
+    objectClass: [ 'olcOverlayConfig', 'olcMemberOf' ]
+    attributes:
+      olcOverlay: '{14}memberof'
+    state: '{{ "present" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Enable memberOf overlay in the main database for Kerberos password servers'
+    dn: 'olcOverlay={15}memberof,olcDatabase={1}mdb,cn=config'
+    objectClass: [ 'olcOverlayConfig', 'olcMemberOf' ]
+    attributes:
+      olcOverlay: '{15}memberof'
+    state: '{{ "present" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Configure memberOf overlay in the main database for Kerberos Principals'
+    dn: 'olcOverlay={12}memberof,olcDatabase={1}mdb,cn=config'
+    attributes:
+      olcMemberOfDangling: 'error'
+      olcMemberOfRefInt: 'TRUE'
+      olcMemberOfGroupOC: 'krbPrincipal'
+      olcMemberOfMemberAD: 'krbObjectReferences'
+      olcMemberOfMemberOfAD: 'krbPrincipalReferences'
+    state: '{{ "exact" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Configure memberOf overlay in the main database for Kerberos KDCs'
+    dn: 'olcOverlay={13}memberof,olcDatabase={1}mdb,cn=config'
+    attributes:
+      olcMemberOfDangling: 'error'
+      olcMemberOfRefInt: 'TRUE'
+      olcMemberOfGroupOC: 'krbRealmContainer'
+      olcMemberOfMemberAD: 'krbKdcServers'
+      olcMemberOfMemberOfAD: 'krbRealmReferences'
+    state: '{{ "exact" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Configure memberOf overlay in the main database for Kerberos administration servers'
+    dn: 'olcOverlay={14}memberof,olcDatabase={1}mdb,cn=config'
+    attributes:
+      olcMemberOfDangling: 'error'
+      olcMemberOfRefInt: 'TRUE'
+      olcMemberOfGroupOC: 'krbRealmContainer'
+      olcMemberOfMemberAD: 'krbAdmServers'
+      olcMemberOfMemberOfAD: 'krbRealmReferences'
+    state: '{{ "exact" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Configure memberOf overlay in the main database for Kerberos password servers'
+    dn: 'olcOverlay={15}memberof,olcDatabase={1}mdb,cn=config'
+    attributes:
+      olcMemberOfDangling: 'error'
+      olcMemberOfRefInt: 'TRUE'
+      olcMemberOfGroupOC: 'krbRealmContainer'
+      olcMemberOfMemberAD: 'krbPwdServers'
+      olcMemberOfMemberOfAD: 'krbRealmReferences'
+    state: '{{ "exact" if kerberos__enabled|bool else "ignore" }}'
+
+  - name: 'Configure Referential Integrity overlay in the main database'
+    dn: 'olcOverlay={7}refint,olcDatabase={1}mdb,cn=config'
+    attributes:
+      olcRefintAttribute:
+        - 'member'
+        - 'memberOf'
+        - 'uniqueMember'
+        - 'manager'
+        - 'owner'
+        - 'roleOccupant'
+        - 'seeAlso'
+        - 'secretary'
+        - 'documentAuthor'
+        - 'krbRealmReferences'
+        - 'krbPrincipalReferences'
+        - 'krbPwdPolicyReference'
+        - 'krbTicketPolicyReference'
+        - 'krbObjectReferences'
+        - 'krbPrincContainerRef'
+        - 'krbKdcServers'
+        - 'krbPwdServers'
+        - 'krbAdmServers'
+    state: '{{ "exact" if kerberos__enabled|bool else "ignore" }}'
 
                                                                    # ]]]
 # .. envvar:: slapd__cluster_tasks [[[
@@ -1178,11 +1399,13 @@ slapd__host_tasks: []
 # role tasks and templates.
 slapd__combined_tasks: '{{ slapd__default_tasks
                            + slapd__acl_tasks
+                           + slapd__kerberos_tasks
                            + slapd__cluster_tasks
                            + slapd__structure_tasks
                            + slapd__tasks
                            + slapd__group_tasks
                            + slapd__host_tasks }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # Backup snapshots [[[
@@ -1507,10 +1730,10 @@ slapd__slapacl_default_tests:
     policy: 'none(=0)'
     dry_run: True
 
-  - name: 'Deny anonymous access to base DN'
+  - name: 'Deny anonymous non-auth access to base DN'
     dn: '{{ slapd__basedn }}'
     authdn: ''
-    policy: 'none(=0)'
+    policy: 'auth(=xd)'
 
   - name: "Allow authentication by anonymous users"
     dn: 'uid=slapacl-test-unpriv-user,ou=People,{{ slapd__basedn }}'
@@ -1530,16 +1753,16 @@ slapd__slapacl_default_tests:
                if (slapd__slapacl_test_objects_state == "present")
                else "init" }}'
 
-  - name: 'Deny anonymous access to ou=People'
+  - name: 'Deny anonymous non-auth access to ou=People'
     dn: 'ou=People,{{ slapd__basedn }}'
     authdn: ''
     queries:
 
       - name: 'entry'
-        result: 'entry: none(=0)'
+        result: 'entry: auth(=xd)'
 
       - name: 'children'
-        result: 'children: none(=0)'
+        result: 'children: auth(=xd)'
 
     state: '{{ "present"
                if (slapd__slapacl_test_objects_state == "present")
@@ -1705,10 +1928,51 @@ slapd__saslauthd__dependent_instances:
     config_group: '{{ slapd__group }}'
     config_raw: |
       pwcheck_method: saslauthd
-      mech_list: PLAIN LOGIN EXTERNAL
+      mech_list:{{ " GSSAPI" if ansible_local.kerberos.enabled|d(False) else "" }} PLAIN LOGIN EXTERNAL
       saslauthd_path: /var/lib/slapd/saslauthd/mux
     socket_path: '/var/lib/slapd/saslauthd'
     socket_group: '{{ slapd__group }}'
     ldap_profile: 'slapd'
+
+                                                                   # ]]]
+# .. envvar:: slapd__apparmor__dependent_locals [[[
+#
+# Configuration for the :ref:`debops.apparmor` Ansible role.
+slapd__apparmor__dependent_locals:
+
+  - name: 'usr.sbin.slapd'
+    options:
+
+      - name: '/etc/pki/**'
+        value: 'r'
+        comment: 'Allow slapd access to DebOps PKI data'
+
+      - name: '/etc/krb5.keytab.d/ldap.keytab'
+        value: 'rk'
+        comment: 'Allow slapd access to its Kerberos keytab'
+
+                                                                   # ]]]
+# .. envvar:: slapd__kerberos__princ [[[
+#
+# Configuration for the :ref:`debops.kerberos` Ansible role.
+slapd__kerberos_princ: '{{ "ldap/" + kerberos__host_fqdn + "@" + kerberos__realm }}'
+
+                                                                   # ]]]
+# .. envvar:: slapd__kerberos__dependent_tasks [[[
+#
+# Configuration for the :ref:`debops.kerberos` Ansible role.
+slapd__kerberos__dependent_tasks:
+
+  - name: 'Ensure that the Kerberos principal {{ slapd__kerberos_princ }} exists'
+    principal: '{{ slapd__kerberos_princ }}'
+    path: '/etc/krb5.keytab.d/ldap.keytab'
+    mode: '0640'
+    owner: 'root'
+    group: 'openldap'
+    state: 'present'
+    ldap_linkdn: '{{ (ansible_local.ldap.device_dn | join(","))
+                     if (ansible_local.ldap.device_dn | d())
+                     else "" }}'
+
                                                                    # ]]]
                                                                    # ]]]

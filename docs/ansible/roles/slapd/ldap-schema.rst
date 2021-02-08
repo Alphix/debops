@@ -409,3 +409,22 @@ changing the list of LDAP schemas the role loads, but the
 :file:`freeradius.schema` file should be always present.
 
 .. __: https://freeradius.org/
+
+.. _slapd__ref_kerberos_schema:
+
+The ``kerberos`` schema
+-----------------------
+
+The ``kerberos`` schema is based on an IETF Internet Draft [#]_ and is included
+in the ``krb5-kdc-ldap`` Debian package. It provides LDAP object and attribute
+definitions which allow `Kerberos`__ realms and principals to be stored in the
+LDAP directory.
+
+The most important object classes in the schema are ``krbPrincipal``, for
+standalone principals, and ``krbPrincipalAux``, which allows other LDAP objects
+to be extended with principals. There are also further object classes like
+``krbAdmServers``, ``krbKdcServers``, ``krbContainer`` and
+``krbRealmContainer`` which contain information about the Kerberos environment.
+
+.. [#] draft-rajasekaran-kerberos-schema-00
+.. __: https://web.mit.edu/kerberos/

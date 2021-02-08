@@ -1,0 +1,19 @@
+{# Copyright (C) 2022 DebOps <https://debops.org/>
+ # Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+# {{ ansible_managed }}
+#
+# /etc/krb5kdc/ldap.stash
+#
+# LDAP password stash file for Kerberos daemons
+#
+# See the "stashsrvpw" section of kdb5_ldap_util(8) for details
+
+{% macro _stash_srv_pw(dn, pw) %}
+{{   dn + "#{HEX}" + pw | to_hexstr -}}
+{% endmacro %}
+{{ _stash_srv_pw(kerberos_server__ldap_kdc_binddn, kerberos_server__ldap_kdc_bindpw) }}
+{% if kerberos_server__primary | d(False) | bool %}
+{{   _stash_srv_pw(kerberos_server__ldap_kadmind_binddn, kerberos_server__ldap_kadmind_bindpw) }}
+{% endif %}
