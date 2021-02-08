@@ -1,0 +1,499 @@
+---
+# Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2022 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+- name: Initialize new Kerberos database
+  collections: [ 'debops.debops', 'debops.roles01',
+                 'debops.roles02', 'debops.roles03' ]
+  hosts: [ 'debops_service_kerberos_server',
+           'debops_service_kerberos_server_primary' ]
+  become: True
+
+  environment: '{{ inventory__environment | d({})
+                   | combine(inventory__group_environment | d({}))
+                   | combine(inventory__host_environment  | d({})) }}'
+
+  vars_prompt:
+
+    - name: 'admin_credential_type'
+      prompt: 'Type of admin credential to create (cert, keytab, password)'
+      default: 'cert'
+      private: False
+
+  vars:
+
+    # Username of the current Ansible user on the Ansible Controller
+    admin_user: '{{ lookup("env", "USER") }}'
+
+    # The Kerberos realm to create an admin account in
+    kerberos_realm: '{{ ansible_domain | upper }}'
+
+    # The instance of admin Kerberos principals
+    admin_principal_instance: 'admin'
+
+    # Kerberos principal for the administrator account
+    admin_principal: '{{ admin_user + "/" + admin_principal_instance + "@" +
+                         kerberos_realm }}'
+
+    # Should the admin principal be auxiliary for the admin_user or
+    # should it be the main principal for the admin_user?
+    # If the admin_user is a dedicated user (e.g. "ansible"), you
+    # probably want to set this to False.
+    # If the admin_user is a regular user, you probably want to keep this
+    # like it is (thus allowing the user to switch between an admin role
+    # and a normal role).
+    admin_principal_aux: True
+
+    # Remote directory for temporary credential storage
+    admin_remote_tmp_dir: '/etc/krb5.keytab.d'
+
+    # Remote path for temporary credential storage
+    admin_remote_tmp_path: '{{ admin_remote_tmp_dir }}/admin.tmp'
+
+    # Local kerberos directory
+    kerberos_secret_path: '{{ secret + "/kerberos" }}'
+
+    # Local krb5.conf path
+    admin_krbconf_path: '{{ kerberos_secret_path + "/krb5.conf" }}'
+
+    # Local admin password path
+    admin_password_path: '{{ kerberos_secret_path + "/admin.password" }}'
+
+    # Local admin keytab path
+    admin_keytab_path: '{{ kerberos_secret_path + "/admin.keytab" }}'
+
+    # External certificate request path
+    admin_pkinit_ext_req_path: ''
+
+    # Local admin certificate request path
+    admin_pkinit_req_path: '{{ kerberos_secret_path + "/admin.req" }}'
+
+    # Local admin certificate request configuration path
+    admin_pkinit_req_conf_path: '{{ kerberos_secret_path + "/openssl-request.conf" }}'
+
+    # Local admin certificate path
+    admin_pkinit_cert_path: '{{ kerberos_secret_path + "/admin.pem" }}'
+
+    # Local admin certificate key path
+    admin_pkinit_key_path: '{{ kerberos_secret_path + "/adminkey.pem" }}'
+
+    # Local admin certificate key size
+    admin_pkinit_key_size: '4096'
+
+    # Local pki path
+    admin_pki_path: '{{ secret + "/pki" }}'
+
+    # Local pki authority path
+    admin_pki_auth_path: '{{ admin_pki_path + "/authorities/kerberos" }}'
+
+    # The Distinguished Name which holds user LDAP entries
+    admin_people_dn: '{{ ([ ansible_local.ldap.people_rdn ] + ansible_local.ldap.base_dn)
+                         if (ansible_local.ldap.enabled | d() | bool and
+                             ansible_local.ldap.base_dn | d() and
+                             ansible_local.ldap.people_rdn | d())
+                         else [] }}'
+
+    # The Relative Distinguished Name of the administrator account in the LDAP
+    # directory
+    admin_rdn: 'uid={{ admin_user }}'
+
+    # The Distinguished Name of the administrator account as a list of RDNs
+    admin_dn: '{{ [ admin_rdn ] + admin_people_dn }}'
+
+    # The Distinguished Name of the administrator account as a string
+    admin_dn_string: '{{ admin_dn | d([]) | join(",") }}'
+
+    # Standard arguments to pass when creating the admin principal
+    # FIXME: Review this
+    kerberos_addprinc_args:
+      - '-randkey'
+      - '-maxlife'
+      - '1h'
+      - '-policy'
+      - 'randkey'
+      - '-allow_postdated'
+      - '-allow_forwardable'
+      - '-allow_renewable'
+      - '-allow_proxiable'
+      - '-allow_dup_skey'
+      - '-allow_svr'
+      - '-allow_tgs_req'
+#      - '-allow_tix'
+      - '-ok_as_delegate'
+      - '+requires_preauth'
+      - '+lockdown_keys'
+
+    # Additional arguments to pass when creating the admin principal
+    kerberos_addprinc_extra_args:
+      - '{{ [ "-x", "linkdn=" + admin_dn_string ] if admin_principal_aux else [] }}'
+      - '{{ [ "-x", "dn=" + admin_dn_string ] if not admin_principal_aux else [] }}'
+
+    # Name of the password policy to use for the admin principal
+    kerberos_policy_name: '{{ "randkey"
+                              if admin_credential_type | d() == "keytab"
+                              else ("default"
+                                    if admin_credential_type | d() == "password"
+                                    else "") }}'
+
+    # Definition of the password policy to use for the admin principal
+    kerberos_addpol_args: '{{ kerberos_addpol_randkey_args
+                              if admin_credential_type | d() == "keytab"
+                              else (kerberos_addpol_default_args
+                                    if admin_credential_type | d() == "password"
+                                    else []) }}'
+
+    # Random keys are excluded from length/class checks, this policy is meant
+    # to exclude other keys
+    kerberos_addpol_randkey_args:
+      - [ '-minlength', '256' ]
+      - [ '-maxfailure', '1' ]
+      - [ '-failurecountinterval', '0' ]
+      - [ '-lockoutduration', '3600' ]
+      - [ '-minclasses', '5' ]
+
+    # Meant to match the slapd ppolicy rules as closely as possible
+    kerberos_addpol_default_args:
+      - [ '-history', '5' ]
+      - [ '-minlength', '10' ]
+      - [ '-maxfailure', '5' ]
+      - [ '-failurecountinterval', '0' ]
+      - [ '-lockoutduration', '300' ]
+      - [ '-minclasses', '3' ]
+
+    kerberos__combined_configuration:
+
+      - section: 'libdefaults'
+        comment: 'Basic defaults for admin access'
+        options:
+
+        - name: 'default_realm'
+          value: '{{ kerberos_realm }}'
+
+        - name: 'dns_lookup_realm'
+          value: 'false'
+
+        - name: 'dns_lookup_kdc'
+          value: 'false'
+
+        - name: 'rdns'
+          value: 'false'
+
+        - name: 'default_ccache_name'
+          value: 'KEYRING:persistent:%{uid}'
+
+        - name: 'spake_preauth_groups'
+          value: 'edwards25519'
+
+        - name: 'pkinit_anchor_1'
+          option: 'pkinit_anchors'
+          value: 'FILE:{{ admin_pki_path }}/authorities/root/subject/cert.pem'
+          state: '{{ "present" if admin_credential_type | d("") == "cert" else "comment" }}'
+
+        - name: 'pkinit_anchor_2'
+          option: 'pkinit_anchors'
+          value: 'FILE:{{ admin_pki_path }}/authorities/kerberos/subject/cert.pem'
+          state: '{{ "present" if admin_credential_type | d("") == "cert" else "comment" }}'
+
+      - section: 'realms'
+        options:
+
+        - name: '{{ kerberos_realm }}'
+          options:
+
+            - name: 'kdc'
+              value: '{{ ansible_fqdn }}'
+
+            - name: 'admin_server'
+              value: '{{ ansible_fqdn }}'
+
+            - name: 'disable_encrypted_timestamp'
+              value: 'true'
+
+            - name: 'pkinit_identities'
+              value: 'FILE:{{ admin_pkinit_cert_path}},{{ admin_pkinit_key_path }}'
+              state: '{{ "present" if admin_credential_type | d("") == "cert" else "comment" }}'
+
+  tasks:
+
+    - name: Make sure that the settings are sensible
+      ansible.builtin.assert:
+        that:
+          - admin_credential_type | d("") in ['cert', 'keytab', 'password']
+
+    - name: Make sure that the password policy "{{ kerberos_policy_name }}" exists
+      ansible.builtin.command:
+        argv: '{{ [ "kadmin.local",
+                    "add_policy",
+                    kerberos_addpol_args,
+                    kerberos_policy_name
+                  ] | flatten }}'
+      register: kerberos_add_policy
+      changed_when: kerberos_add_policy.rc == 0
+      failed_when: kerberos_add_policy.rc > 1 or
+                   (kerberos_add_policy.rc == 1 and
+                    'already exists' not in kerberos_add_policy.stderr | lower and
+                    'database store error' not in kerberos_add_policy.stderr | lower)
+      when:
+        - kerberos_policy_name | d('') | length > 0
+        - kerberos_addpol_args | d([]) | flatten | length > 0
+
+    - name: Make sure that the remote temporary credential directory exists
+      ansible.builtin.file:
+        path: '{{ admin_remote_tmp_dir }}'
+        state: 'directory'
+        mode: '0755'
+
+    - name: Remove old temporary remote credentials
+      ansible.builtin.file:
+        path: '{{ admin_remote_tmp_path }}'
+        state: 'absent'
+
+    - name: Remove old local credentials
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: 'absent'
+      loop:
+        - '{{ admin_password_path }}'
+        - '{{ admin_keytab_path }}'
+        - '{{ admin_pkinit_req_path }}'
+        - '{{ admin_pkinit_cert_path }}'
+        - '{{ admin_pkinit_key_path }}'
+      delegate_to: 'localhost'
+      become: False
+
+    - name: Create Kerberos configuration
+      ansible.builtin.template:
+        src: '../../roles/kerberos/templates/etc/krb5.conf.j2'
+        dest: '{{ admin_krbconf_path }}'
+      delegate_to: 'localhost'
+      become: False
+
+    - name: Create password-based admin credentials
+      block:
+
+        - name: Input new admin password
+          ansible.builtin.pause:
+            prompt: 'New password for your Kerberos principals (enter=random)'
+            echo: False
+          register: admin_password_register
+          no_log: True
+
+        - name: Register admin password
+          ansible.builtin.set_fact:
+            admin_plaintext_password: '{{ admin_password_register.user_input
+                                          if admin_password_register.user_input | d()
+                                          else lookup("password", admin_password_path +
+                                                      " chars=ascii_letters,digits length=32") }}'
+          no_log: True
+
+        - name: Transfer admin password to remote host
+          ansible.builtin.copy:
+            content: '{{ admin_plaintext_password }}'
+            dest: '{{ admin_remote_tmp_path }}'
+            owner: 'root'
+            group: 'root'
+            mode: '0400'
+          no_log: True
+
+        - name: Make sure that the principal {{ admin_principal }} exists
+          ansible.builtin.shell: set -o nounset -o pipefail -o errexit &&
+            cat {{ admin_remote_tmp_path | quote }} |
+            sed 's/\(.*\)/\1\n\1\n/' |
+            kadmin.local add_principal
+            {{ [ kerberos_addprinc_args ] | flatten | join(' ') }}
+            {{ [ kerberos_addprinc_extra_args ] | flatten | join (' ') }}
+            {{ admin_principal | quote }}
+          args:
+            executable: 'bash'
+          register: kerberos_add_principal
+          changed_when: kerberos_add_principal.rc == 0
+          failed_when: kerberos_add_principal.rc > 1 or
+                       (kerberos_add_principal.rc == 1 and
+                        'already exists' not in kerberos_add_principal.stderr | lower)
+
+        - name: Make sure that the principal {{ admin_principal }} has the correct password
+          ansible.builtin.shell: set -o nounset -o pipefail -o errexit &&
+            cat {{ admin_remote_tmp_path | quote }} |
+            sed 's/\(.*\)/\1\n\1\n/' |
+            kadmin.local change_password
+            {{ admin_principal | quote }}
+          args:
+            executable: 'bash'
+          register: kerberos_chpass_principal
+          when: (kerberos_add_principal.rc == 1 and
+                 'already exists' in kerberos_add_principal.stderr | lower)
+          changed_when: kerberos_chpass_principal.rc == 0
+          failed_when: kerberos_chpass_principal.rc > 1 or
+                       (kerberos_chpass_principal.rc == 1 and
+                        'cannot reuse' not in kerberos_chpass_principal.stderr | lower)
+
+        - name: Remove temporary remote credentials
+          ansible.builtin.file:
+            path: '{{ admin_remote_tmp_path }}'
+            state: 'absent'
+
+        - name: Finished creating admin principal
+          ansible.builtin.debug:
+            msg:
+              - 'Admin password path: {{ admin_password_path }}'
+              - 'Kerberos configuration path: {{ admin_krbconf_path }}'
+          when: admin_password_register.user_input | d('') | length == 0
+
+        - name: Finished creating admin principal
+          ansible.builtin.debug:
+            msg:
+              - 'Kerberos configuration path: {{ admin_krbconf_path }}'
+          when: admin_password_register.user_input | d('') | length > 0
+
+      when: admin_credential_type == 'password'
+
+    - name: Create keytab-based admin credentials
+      block:
+
+        - name: Make sure that the principal {{ admin_principal }} exists
+          ansible.builtin.command:
+            argv: '{{ [ "kadmin.local",
+                        "add_principal",
+                        kerberos_addprinc_args,
+                        kerberos_addprinc_extra_args,
+                        "-randkey",
+                        "-policy", kerberos_policy_name,
+                        admin_principal
+                      ] | flatten }}'
+          register: kerberos_add_principal
+          changed_when: kerberos_add_principal.rc == 0
+          failed_when: kerberos_add_principal.rc > 1 or
+                       (kerberos_add_principal.rc == 1 and
+                        'already exists' not in kerberos_add_principal.stderr | lower)
+
+        - name: Create remote keytab
+          ansible.builtin.command:
+            cmd: kadmin.local ktadd -k {{ admin_remote_tmp_path | quote }} {{ admin_principal | quote }}
+
+        - name: Fetch remote keytab
+          ansible.builtin.fetch:
+            src: '{{ admin_remote_tmp_path }}'
+            dest: '{{ admin_keytab_path }}'
+            fail_on_missing: True
+            flat: True
+
+        - name: Enforce permissions on local keytab
+          ansible.builtin.file:
+            path: '{{ admin_keytab_path }}'
+            mode: '0600'
+          delegate_to: 'localhost'
+          become: False
+
+        - name: Remove temporary remote credentials
+          ansible.builtin.file:
+            path: '{{ admin_remote_tmp_path }}'
+            state: 'absent'
+
+        - name: Finished creating admin keytab
+          ansible.builtin.debug:
+            msg:
+              - 'Admin keytab path: {{ admin_keytab_path }}'
+              - 'Kerberos configuration path: {{ admin_krbconf_path }}'
+
+      when: admin_credential_type == 'keytab'
+
+    - name: Create cert-based admin credentials
+      block:
+
+        - name: Make sure that the principal {{ admin_principal }} exists
+          ansible.builtin.command:
+            argv: '{{ [ "kadmin.local",
+                        "add_principal",
+                        kerberos_addprinc_args,
+                        kerberos_addprinc_extra_args,
+                        "-nokey",
+                        admin_principal
+                      ] | flatten }}'
+          register: kerberos_add_principal
+          changed_when: kerberos_add_principal.rc == 0
+          failed_when: kerberos_add_principal.rc > 1 or
+                       (kerberos_add_principal.rc == 1 and
+                        'already exists' not in kerberos_add_principal.stderr | lower)
+
+        - name: Create certificate key
+          ansible.builtin.command:
+            argv:
+              - 'openssl'
+              - 'genrsa'
+              - '-out'
+              - '{{ admin_pkinit_key_path }}'
+              - '{{ admin_pkinit_key_size }}'
+          when: admin_pkinit_ext_req_path | d('') | length == 0
+          delegate_to: 'localhost'
+          become: False
+
+        - name: Create certificate request configuration
+          ansible.builtin.template:
+            src: '../../roles/kerberos/templates/secret/kerberos/openssl-request.conf.j2'
+            dest: '{{ admin_pkinit_req_conf_path }}'
+          when: admin_pkinit_ext_req_path | d('') | length == 0
+          delegate_to: 'localhost'
+          become: False
+
+        - name: Create certificate request
+          environment:
+            CLIENT: '{{ admin_user }}'
+          ansible.builtin.command:
+            argv:
+              - 'openssl'
+              - 'req'
+              - '-new'
+              - '-key'
+              - '{{ admin_pkinit_key_path }}'
+              - '-config'
+              - '{{ admin_pkinit_req_conf_path }}'
+              - '-out'
+              - '{{ admin_pkinit_req_path }}'
+          when: admin_pkinit_ext_req_path | d('') | length == 0
+          delegate_to: 'localhost'
+          become: False
+
+        - name: Copy certificate request
+          ansible.builtin.copy:
+            src: '{{ admin_pkinit_ext_req_path }}'
+            dest: '{{ admin_pkinit_req_path }}'
+            mode: '0644'
+          when: admin_pkinit_ext_req_path | d('') | length > 0
+          delegate_to: 'localhost'
+          become: False
+
+        - name: Sign certificate request
+          environment:
+            CLIENT: '{{ admin_user }}'
+            TYPE: '{{ "dual" if admin_principal_aux else "admin" }}'
+          ansible.builtin.command:
+            chdir: '{{ admin_pki_auth_path }}'
+            argv:
+              - 'openssl'
+              - 'ca'
+              - '-batch'
+              - '-notext'
+              - '-in'
+              - '{{ admin_pkinit_req_path }}'
+              - '-out'
+              - '{{ admin_pkinit_cert_path }}'
+              - '-config'
+              - 'config/openssl-sign.conf.client'
+          delegate_to: 'localhost'
+          become: False
+
+        - name: Finished creating admin cert
+          ansible.builtin.debug:
+            msg:
+              - 'Admin cert path: {{ admin_pkinit_cert_path }}'
+              - 'Admin key path: {{ admin_pkinit_key_path }}'
+              - 'Kerberos configuration path: {{ admin_krbconf_path }}'
+
+      when: admin_credential_type == 'cert'
+
+  roles:
+
+    - role: 'ansible_plugins'
+
+    - role: 'secret'

@@ -1,0 +1,534 @@
+---
+# .. vim: foldmarker=[[[,]]]:foldmethod=marker
+
+# .. Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2022 DebOps <https://debops.org/>
+# .. SPDX-License-Identifier: GPL-3.0-only
+
+# .. _kerberos_server__ref_defaults:
+
+# debops.kerberos_server default variables [[[
+# ============================================
+
+# .. contents:: Sections
+#    :local:
+#
+# .. include:: ../../../../includes/global.rst
+
+
+# Packages and installation [[[
+# -----------------------------
+
+# .. envvar:: kerberos_server__base_packages [[[
+#
+# List of required packages for the Kerberos service.
+kerberos_server__base_packages:
+  - 'krb5-kdc-ldap'
+  - '{{ [ "krb5-admin-server" ] if kerberos_server__primary | d(False) else [] }}'
+  - 'libsasl2-modules-gssapi-mit'
+  - '{{ [ "krb5-pkinit" ] if kerberos_server__pki | d(False) else [] }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__packages [[[
+#
+# List of additional packages that should be installed for the Kerberos
+# service.
+kerberos_server__packages: []
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Service configuration [[[
+# -------------------------
+
+# .. envvar:: kerberos_server__primary [[[
+#
+# Whether the current host is a primary (i.e. also runs the :command:`kadmind`
+# daemon) or a secondary (pure KDC) Kerberos server.
+kerberos_server__primary: '{{ True if
+                              ("debops_service_kerberos_server" in group_names or
+                               "debops_service_kerberos_server_primary" in group_names)
+                              else False }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__default_realms [[[
+#
+# List of YAML dictionaries defining the default realm(s) to be managed by this
+# server.  See :ref:`kerberos_server__ref_realms` for more details.
+kerberos_server__default_realms:
+
+  - realm: '{{ ansible_domain | upper }}'
+    subtrees: [ '{{ ansible_local.ldap.basedn | d("") }}' ]
+    sscope: 'SUB'
+
+    pki_authority:
+      name: 'kerberos'
+      enabled: '{{ kerberos_server__pki | d(False) }}'
+      subdomain: 'kerberos-ca'
+      subject: [ 'o={{ ansible_domain.split(".") | first | capitalize }}', 'ou=Kerberos CA' ]
+      type: 'kerberos'
+      issuer_name: 'root'
+      key_size: '4096'
+      system_ca: False
+
+    pki_realm:
+      name: 'kerberos'
+      acme: False
+      authority: 'kerberos'
+      default_subdomains:
+        - '{{ ansible_hostname }}'
+
+    kadmind_acls:
+
+      - primary: '*'
+        instance: 'admin'
+        permissions: '*'
+        comment: 'Give full access to */admin@REALM principals'
+
+    kadmind_tasks:
+
+      - name: 'Create default password policy'
+        comment: 'Meant to match the slapd ppolicy rules as closely as possible'
+        command: 'add_policy
+          -history 5
+          -minlength 10
+          -maxfailure 5
+          -failurecountinterval 0
+          -lockoutduration 300
+          -minclasses 3
+          default'
+
+      - name: 'Create randkey password policy'
+        comment: 'Randkeys are excluded from length/class checks, this is meant to exclude other keys'
+        command: 'add_policy
+          -minlength 256
+          -maxfailure 1
+          -failurecountinterval 0
+          -lockoutduration 3600
+          -minclasses 5
+          randkey'
+
+    ldap_tasks:
+
+      - name: 'Add Kerberos kadmind to realm {{ ansible_domain | upper }}'
+        dn: '{{ [ ("cn=" + (ansible_domain | upper)), kerberos_server__ldap_realms_dn ] | join(",") }}'
+        attributes:
+          krbAdmServers: [ '{{ kerberos_server__ldap_kadmind_binddn }}' ]
+        state: '{{ "present" if kerberos_server__primary|d(False)|bool else "ignore" }}'
+
+      - name: 'Add Kerberos KDC to realm {{ ansible_domain | upper }}'
+        dn: '{{ [ ("cn=" + (ansible_domain | upper)), kerberos_server__ldap_realms_dn ] | join(",") }}'
+        attributes:
+          krbKdcServers: [ '{{ kerberos_server__ldap_kdc_binddn }}' ]
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__realms [[[
+#
+# List of YAML dictionaries defining the realm(s) to be managed by all hosts in
+# the Ansible inventory. See :ref:`kerberos_server__ref_realms` for more
+# details.
+kerberos_server__realms: []
+                                                                   # ]]]
+
+# .. envvar:: kerberos_server__group_realms [[[
+#
+# List of YAML dictionaries defining the realm(s) to be managed by all hosts in
+# a specific Ansible inventory group. See :ref:`kerberos_server__ref_realms`
+# for more details.
+kerberos_server__group_realms: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__host_realms [[[
+#
+# List of YAML dictionaries defining the realm(s) to be managed by a specific
+# host in the Ansible inventory. See :ref:`kerberos_server__ref_realms` for
+# more details.
+kerberos_server__host_realms: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__combined_realms [[[
+#
+# This variable combines the other realm configuration variables for use in the
+# realm configuration. See :ref:`kerberos_server__ref_realms` for more details.
+kerberos_server__combined_realms: '{{ kerberos_server__default_realms
+                                      + kerberos_server__realms
+                                      + kerberos_server__group_realms
+                                      + kerberos_server__host_realms }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__local_stash_path_base [[[
+#
+# The path prefix on the Ansible controller where the stash file for a given
+# realm should be stored. See :ref:`kerberos_server__ref_stash` for further
+# details.
+kerberos_server__local_stash_path_base: '{{ secret + "/kerberos/stash." }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__remote_stash_path_base [[[
+#
+# The path prefix on the remote host where the stash file for a given realm
+# should be stored. See :ref:`kerberos_server__ref_stash` for further
+# details.
+kerberos_server__remote_stash_path_base: '{{ "/etc/krb5kdc/.k5." }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Support for DebOps PKI [[[
+# --------------------------
+
+# .. envvar:: kerberos_server__pki [[[
+#
+# Enable or disable support for X.509 certificates (PKINIT, in Kerberos terms)
+# using the :ref:`debops.pki` Ansible role
+kerberos_server__pki: '{{ ansible_local.pki.enabled | d(False) | bool }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__pki_realm [[[
+#
+# Default PKI realm used by the OpenLDAP server. In a multi-master clustered
+# setup the configuration is shared, therefore all cluster nodes should use the
+# same PKI realm name.
+kerberos_server__pki_realm: 'kerberos-{{ ansible_domain | upper }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__pki_ca_subdomain [[[
+#
+# 
+# .. envvar:: kerberos_server__pki_ca [[[
+#
+# Name of the Root CA certificate file used by the OpenLDAP server, relative to
+# the PKI realm directory.
+kerberos_server__pki_ca: 'CA.crt'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__pki_crt [[[
+#
+# Name of the X.509 certificate file used by the OpenLDAP server, relative to
+# the PKI realm directory.
+kerberos_server__pki_crt: 'default.crt'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__pki_key [[[
+#
+# Name of the private key used by the OpenLDAP server, relative to the PKI
+# realm directory.
+kerberos_server__pki_key: 'default.key'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__tls_ca_certificate [[[
+#
+# Absolute path to the Root CA certificate used by the OpenLDAP server to
+# authenticate TLS client certificates.
+kerberos_server__tls_ca_certificate: '{{ kerberos_server__pki_path + "/" + kerberos_server__pki_realm + "/" + kerberos_server__pki_ca }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__tls_certificate [[[
+#
+# Absolute path to the X.509 certificate used by the OpenLDAP server.
+kerberos_server__tls_certificate: '{{ kerberos_server__pki_path + "/" + kerberos_server__pki_realm + "/" + kerberos_server__pki_crt }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__tls_private_key [[[
+#
+# Absolute path to the private key used by the OpenLDAP server.
+kerberos_server__tls_private_key: '{{ kerberos_server__pki_path + "/" + kerberos_server__pki_realm + "/" + kerberos_server__pki_key }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# LDAP environment [[[
+# --------------------
+
+# .. envvar:: kerberos_server__ldap_realms_rdn [[[
+#
+# The Relative Distinguished Name of the LDAP Service entry holding all
+# Kerberos realms.
+kerberos_server__ldap_realms_rdn: 'cn=Kerberos'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_realms_object_classes [[[
+#
+# List of the LDAP object classes which will be used to create the LDAP Service
+# entry holding all Kerberos realm entries.
+kerberos_server__ldap_realms_object_classes: [ 'krbContainer' ]
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_realms_attributes [[[
+#
+# YAML dictionary that defines the attributes of the LDAP Service entry holding
+# all Kerberos realm entries.
+kerberos_server__ldap_realms_attributes:
+  cn: '{{ kerberos_server__ldap_realms_rdn.split("=")[1] }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_realms_dn [[[
+#
+# The Distinguished Name of the LDAP Service entry under which all Kerberos
+# realm entries are created.
+kerberos_server__ldap_realms_dn: '{{ (([ kerberos_server__ldap_realms_rdn, ansible_local.ldap.services_rdn ] + ansible_local.ldap.base_dn) | join(","))
+                                     if (ansible_local.ldap.enabled | d(False) | bool and
+                                         ansible_local.ldap.base_dn | d() and
+                                         ansible_local.ldap.services_rdn | d())
+                                     else "" }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kdc_rdn [[[
+#
+# The Relative Distinguished Name of the account LDAP entry used by the KDCs
+# to access the LDAP directory.
+kerberos_server__ldap_kdc_rdn: 'cn=kdc'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kdc_object_classes [[[
+#
+# List of the LDAP object classes which will be used to create the LDAP entry
+# used by the KDCs to access the LDAP directory.
+kerberos_server__ldap_kdc_object_classes: [ 'krbKdcService', 'simpleSecurityObject' ]
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kdc_attributes [[[
+#
+# YAML dictionary that defines the attributes of the LDAP entry used by the
+# KDCs to access the LDAP directory.
+kerberos_server__ldap_kdc_attributes:
+  cn: '{{ kerberos_server__ldap_kdc_rdn.split("=")[1] }}'
+  userPassword: '{{ kerberos_server__ldap_kdc_bindpw }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kdc_binddn [[[
+#
+# The Distinguished Name of the account LDAP entry used by the KDCs to bind to
+# the LDAP directory.
+kerberos_server__ldap_kdc_binddn: '{{ ([ kerberos_server__ldap_kdc_rdn ] + ansible_local.ldap.device_dn|d([])) | join(",") }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kdc_bindpw [[[
+#
+# The password stored in the account LDAP entry used by the KDCs to bind to
+# the LDAP directory.
+kerberos_server__ldap_kdc_bindpw: '{{ lookup("ldap_password",
+                                             secret + "/ldap/credentials/",
+                                             kerberos_server__ldap_kdc_binddn,
+                                             "length=32") }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kadmind_rdn [[[
+#
+# The Relative Distinguished Name of the account LDAP entry used by the
+# :command:`kadmind` daemon to access the LDAP directory.
+kerberos_server__ldap_kadmind_rdn: 'cn=kadmind'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kadmind_object_classes [[[
+#
+# List of the LDAP object classes which will be used to create the LDAP entry
+# used by the :command:`kadmind` daemon to access the LDAP directory.
+kerberos_server__ldap_kadmind_object_classes: [ 'krbAdmService', 'simpleSecurityObject' ]
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kadmind_attributes [[[
+#
+# YAML dictionary that defines the attributes of the LDAP entry used by the
+# :command:`kadmind` daemon to access the LDAP directory.
+kerberos_server__ldap_kadmind_attributes:
+  cn: '{{ kerberos_server__ldap_kadmind_rdn.split("=")[1] }}'
+  userPassword: '{{ kerberos_server__ldap_kadmind_bindpw }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kadmind_binddn [[[
+#
+# The Distinguished Name of the account LDAP entry used by the
+# :command:`kadmind` daemon to bind to the LDAP directory.
+kerberos_server__ldap_kadmind_binddn: '{{ ([ kerberos_server__ldap_kadmind_rdn ] + ansible_local.ldap.device_dn|d([])) | join(",") }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap_kadmind_bindpw [[[
+#
+# The password stored in the account LDAP entry used by the :command:`kadmind`
+# daemon to bind to the LDAP directory.
+kerberos_server__ldap_kadmind_bindpw: '{{ lookup("ldap_password",
+                                                 secret + "/ldap/credentials/",
+                                                 kerberos_server__ldap_kadmind_binddn,
+                                                 "length=32") }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Firewall configuration [[[
+# --------------------------
+
+# .. envvar:: kerberos_server__accept_any [[[
+#
+# The default firewall policy for Kerberos services.
+#
+# If ``True``, any host can connect to the Kerberos daemons unless allow
+# restrictions are defined using the variables below.
+#
+# If ``False``, no hosts can connect to the Kerberos daemons by default. You
+# need to specify IP addresses or subnets that can access the services using
+# the variables below.
+kerberos_server__accept_any: True
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kadmin_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the :command:`kadmind` daemon, defined for all hosts in the Ansible
+# inventory.
+kerberos_server__kadmin_allow: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kadmin_group_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the :command:`kadmind` daemon, defined for all hosts in a specific group in
+# the Ansible inventory.
+kerberos_server__kadmin_group_allow: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kadmin_host_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the :command:`kadmind` daemon, defined for a specific host in the Ansible
+# inventory.
+kerberos_server__kadmin_host_allow: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kpasswd_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the ``kpasswd`` service, defined for all hosts in the Ansible inventory.
+kerberos_server__kpasswd_allow: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kpasswd_group_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the ``kpasswd`` service, defined for all hosts in a specific group in the
+# Ansible inventory.
+kerberos_server__kpasswd_group_allow: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kpasswd_host_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the ``kpasswd`` service, defined for a specific host in the Ansible
+# inventory.
+kerberos_server__kpasswd_host_allow: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kdc_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the :command:`krb5kdc` daemon, defined for all hosts in the Ansible
+# inventory.
+kerberos_server__kdc_allow: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kdc_group_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the :command:`krb5kdc` daemon, defined for all hosts in a specific group in
+# the Ansible inventory.
+kerberos_server__kdc_group_allow: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__kdc_host_allow [[[
+#
+# List of IP addresses or CIDR subnets which should be allowed to connect to
+# the :command:`krb5kdc` daemon, defined for a specific host in the Ansible
+# inventory.
+kerberos_server__kdc_host_allow: []
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Configuration for other Ansible roles [[[
+# -----------------------------------------
+
+# .. envvar:: kerberos_server__ferm__dependent_rules [[[
+#
+# Configuration for the :ref:`debops.ferm` role.
+kerberos_server__ferm__dependent_rules:
+
+  - name: 'kerberos_server_kadmin'
+    type: 'accept'
+    by_role: 'debops.kerberos_server'
+    protocols: [ 'tcp' ]
+    dport: [ 'kerberos-adm' ]
+    saddr: '{{ kerberos_server__kadmin_allow
+               + kerberos_server__kadmin_group_allow
+               + kerberos_server__kadmin_host_allow }}'
+    accept_any: '{{ kerberos_server__accept_any }}'
+    rule_state: '{{ "present" if kerberos_server__primary | d(True) else "absent" }}'
+
+  - name: 'kerberos_server_kpasswd'
+    type: 'accept'
+    by_role: 'debops.kerberos_server'
+    protocols: [ 'udp', 'tcp' ]
+    dport: [ 'kpasswd' ]
+    saddr: '{{ kerberos_server__kpasswd_allow
+               + kerberos_server__kpasswd_group_allow
+               + kerberos_server__kpasswd_host_allow }}'
+    accept_any: '{{ kerberos_server__accept_any }}'
+    rule_state: '{{ "present" if kerberos_server__primary | d(True) else "absent" }}'
+
+  - name: 'kerberos_server_kdc'
+    type: 'accept'
+    by_role: 'debops.kerberos_server'
+    protocols: [ 'udp', 'tcp' ]
+    dport: [ 'kerberos' ]
+    saddr: '{{ kerberos_server__kdc_allow
+               + kerberos_server__kdc_group_allow
+               + kerberos_server__kdc_host_allow }}'
+    accept_any: '{{ kerberos_server__accept_any }}'
+    rule_state: 'present'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap__dependent_rules [[[
+#
+# Configuration for the :ref:`debops.ldap` role.
+kerberos_server__ldap__dependent_tasks:
+
+  - name: 'Create the {{ kerberos_server__ldap_realms_dn }} service entry'
+    dn: '{{ kerberos_server__ldap_realms_dn }}'
+    objectClass: '{{ kerberos_server__ldap_realms_object_classes }}'
+    attributes: '{{ kerberos_server__ldap_realms_attributes }}'
+
+  - name: 'Create kdc account for {{ kerberos_server__ldap_kdc_binddn }}'
+    dn: '{{ kerberos_server__ldap_kdc_binddn }}'
+    objectClass: '{{ kerberos_server__ldap_kdc_object_classes }}'
+    attributes: '{{ kerberos_server__ldap_kdc_attributes }}'
+    no_log: '{{ debops__no_log | d(True) }}'
+
+  - name: 'Create kadmind account for {{ kerberos_server__ldap_kadmind_binddn }}'
+    dn: '{{ kerberos_server__ldap_kadmind_binddn }}'
+    objectClass: '{{ kerberos_server__ldap_kadmind_object_classes }}'
+    attributes: '{{ kerberos_server__ldap_kadmind_attributes }}'
+    no_log: '{{ debops__no_log | d(True) }}'
+    state: '{{ "present" if kerberos_server__primary | d(True) else "ignore"}}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__ldap__dependent_realm_tasks [[[
+#
+# Placeholder which will be populated with configuration tasks for the
+# :ref:`debops.ldap` role after new realm(s) have been created.
+kerberos_server__ldap__dependent_realm_tasks: []
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__pki__dependent_authorities [[[
+#
+# List of PKI authorities to create via the :ref:`debops.pki` role.
+kerberos_server__pki__dependent_authorities: '{{ kerberos_server__combined_realms
+                                                 | parse_kv_config(name="realm")
+                                                 | selectattr("state", "equalto", "present")
+                                                 | map(attribute="pki_authority") }}'
+
+                                                                   # ]]]
+# .. envvar:: kerberos_server__pki__dependent_realms [[[
+#
+# List of PKI realms to create via the :ref:`debops.pki` role.
+kerberos_server__pki__dependent_realms: '{{ kerberos_server__combined_realms
+                                            | parse_kv_config(name="realm")
+                                            | selectattr("state", "equalto", "present")
+                                            | map(attribute="pki_realm") }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+                                                                   # ]]]

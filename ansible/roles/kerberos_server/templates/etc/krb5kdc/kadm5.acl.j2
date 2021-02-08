@@ -1,0 +1,53 @@
+{# Copyright (C) 2022 DebOps <https://debops.org/>
+ # Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+# {{ ansible_managed }}
+#
+# /etc/krb5kdc/kadm5.acl
+#
+# kadmind ACL file
+#
+# See the kadm5.acl(5) man page for details.
+
+# PRINCIPAL               PERMISSIONS     TARGET                    RESTRICTIONS
+
+{% macro print_rule(realm, rule) %}
+{%   if rule.comment is defined %}
+{{     rule.comment | regex_replace('\n$', '') | comment(prefix='', decoration='# ', postfix='') -}}
+{%   endif %}
+{%   if rule.primary is undefined or rule.permissions is undefined %}
+# Error in ACL rule: {{ rule | to_json }}
+{%   else %}
+{%     if rule.state | d('present') == 'comment' %}
+{%       set prefix = '#' %}
+{%     else %}
+{%       set prefix = '' %}
+{%     endif %}
+{%     if rule.instance is defined %}
+{%       set principal = (rule.primary + "/" + rule.instance + "@" + rule.realm | d(realm)) %}
+{%     else %}
+{%       set principal = (rule.primary + "@" + rule.realm | d(realm)) %}
+{%     endif %}
+{%     set permissions = rule.permissions %}
+{%     if rule.target is undefined and rule.restrictions is defined %}
+{%       set target = '*' %}
+{%     else %}
+{%       set target = rule.target | d('') %}
+{%     endif %}
+{%     set restrictions = rule.restrictions | d('') %}
+{{ '%s%-25s %-15s %-25s %s' | format(prefix, principal, permissions, target, restrictions) | regex_replace('\s*$', '') -}} 
+{%   endif %}
+{% endmacro %}
+{##}
+{% for realm in kerberos_server__combined_realms | parse_kv_config(name="realm") %}
+{%   if realm.realm | d() and realm.state | d('present') not in [ 'init', 'ignore', 'absent' ] %}
+{%     for rule in realm.kadmind_acls | d([]) %}
+{%       if rule.state | d('present') not in [ 'init', 'ignore', 'absent' ] %}
+{%         if rule.primary | d() and rule.permissions | d() %}
+{{           print_rule(realm.realm, rule) -}}
+{%         endif %}
+{%       endif %}
+{%     endfor %}
+{%   endif %}
+{% endfor %}

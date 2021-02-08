@@ -59,5 +59,10 @@
       apparmor__dependent_locals:
         - '{{ slapd__apparmor__dependent_locals }}'
 
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__dependent_tasks:
+        - '{{ slapd__kerberos__dependent_tasks }}'
+
     - role: slapd
       tags: [ 'role::slapd', 'skip::slapd' ]

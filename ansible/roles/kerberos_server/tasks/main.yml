@@ -1,0 +1,75 @@
+---
+# Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2022 DebOps <https://debops.org/>
+# SPDX-License-Indentifier: GPL-3.0-only
+
+- name: Import custom Ansible plugins
+  ansible.builtin.import_role:
+    name: 'ansible_plugins'
+
+- name: Import DebOps global handlers
+  ansible.builtin.import_role:
+    name: 'global_handlers'
+
+- name: Import DebOps secret role
+  ansible.builtin.import_role:
+    name: 'secret'
+
+- name: Create /etc/krb5kdc directory
+  ansible.builtin.file:
+    path: '/etc/krb5kdc'
+    state: 'directory'
+    mode: '0700'
+  tags: [ 'role::kerberos_server:config', 'skip::kerberos_server:config' ]
+
+- name: Generate kadmind/kdc configuration files
+  ansible.builtin.template:
+    src: '{{ "etc/krb5kdc/" + item.src }}'
+    dest: '{{ "/etc/krb5kdc/" + item.dest }}'
+    mode: '{{ item.mode | d("0644") }}'
+  loop:
+    - { src: 'kdc.conf.j2', dest: 'kdc.conf' }
+    - { src: 'ldap.stash.j2', dest: 'ldap.stash', mode: '0640' }
+  loop_control:
+    label: '{{ item.dest }}'
+  notify: [ 'Restart krb5-admin-server', 'Restart krb5-kdc' ]
+  tags: [ 'role::kerberos_server:config', 'skip::kerberos_server:config' ]
+
+- name: Generate kadmind acl file
+  ansible.builtin.template:
+    src: 'etc/krb5kdc/kadm5.acl.j2'
+    dest: '/etc/krb5kdc/kadm5.acl'
+    mode: '0644'
+  when: kerberos_server__primary | d(False) | bool
+  notify: [ 'Restart krb5-admin-server' ]
+  tags: [ 'role::kerberos_server:config', 'skip::kerberos_server:config' ]
+
+- name: Remove kadmind acl file
+  ansible.builtin.file:
+    path: '/etc/krb5kdc/kadm5.acl'
+    state: 'absent'
+  when: not kerberos_server__primary | d(False) | bool
+  tags: [ 'role::kerberos_server:config', 'skip::kerberos_server:config' ]
+
+- name: Install Kerberos packages
+  ansible.builtin.package:
+    name: '{{ q("flattened", (kerberos_server__base_packages + kerberos_server__packages)) }}'
+    state: 'present'
+  register: kerberos_server__register_packages
+  until: kerberos_server__register_packages is succeeded
+  tags: [ 'role::kerberos_server:packages', 'skip::kerberos_server:packages' ]
+
+- name: Create or update Kerberos realm(s)
+  ansible.builtin.include_tasks: 'realm-init.yml'
+  loop: '{{ kerberos_server__combined_realms | parse_kv_config(name="realm") }}'
+  loop_control:
+    label: '{{ item.realm }}'
+  when:
+    - item.realm | d()
+    - item.subtrees | d()
+    - item.sscope | d()
+    - item.state | d('present') not in [ 'init', 'ignore', 'absent' ]
+  tags: [ 'role::kerberos_server:realms', 'skip::kerberos_server:realms' ]
+
+- name: Update Ansible facts and restart Kerberos servers, if necessary
+  ansible.builtin.meta: 'flush_handlers'

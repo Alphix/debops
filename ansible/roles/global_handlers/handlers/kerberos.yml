@@ -1,0 +1,15 @@
+---
+# Copyright (C) 2021 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2021 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+- name: Restart krb5-admin-server
+  ansible.builtin.service:
+    name: 'krb5-admin-server'
+    state: 'restarted'
+  when: kerberos_server__primary | d(False) | bool
+
+- name: Restart krb5-kdc
+  ansible.builtin.service:
+    name: 'krb5-kdc'
+    state: 'restarted'
