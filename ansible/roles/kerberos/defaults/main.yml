@@ -335,8 +335,8 @@ kerberos__default_configuration:
       value: 'false'
 
     - name: 'default_ccache_name'
-      value: 'KEYRING:persistent:%{uid}'
-      state: 'comment'
+      value: '{{ "KCM:" if (ansible_local.sssd.installed | d(False)) else "KEYRING:persistent:%{uid}" }}'
+      state: '{{ "present" if (ansible_local.sssd.installed | d(False)) else "comment" }}'
 
     - name: 'spake_preauth_groups'
       value: 'edwards25519'

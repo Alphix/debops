@@ -2,8 +2,8 @@
 # .. vim: foldmarker=[[[,]]]:foldmethod=marker
 
 # .. Copyright (C) 2019-2021 Maciej Delmanowski <drybjed@gmail.com>
-# .. Copyright (C) 2021      David Härdeman <david@hardeman.nu>
-# .. Copyright (C) 2019-2021 DebOps <https://debops.org/>
+# .. Copyright (C) 2021-2023 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2019-2023 DebOps <https://debops.org/>
 # .. SPDX-License-Identifier: GPL-3.0-only
 
 # .. _sssd__ref_defaults:
@@ -24,7 +24,14 @@
 #
 # List of APT packages required for LDAP lookups via NSS and PAM.
 sssd__base_packages:
-  - [ 'sssd', 'libnss-sss', 'libsss-sudo', 'libpam-sss' ]
+  - 'sssd'
+  - 'libnss-sss'
+  - 'libsss-sudo'
+  - 'libpam-sss'
+  - '{{ [ "sssd-kcm" ]
+        if (ansible_local.kerberos.enabled | d(False) or
+            "debops_service_kerberos" in group_names)
+        else [] }}'
 
                                                                    # ]]]
 # .. envvar:: sssd__packages [[[
@@ -41,6 +48,45 @@ sssd__packages: []
 # Default umask for new home directories created by the ``pam_mkhomedir`` PAM
 # module.
 sssd__mkhomedir_umask: '{{ ansible_local.core.homedir_umask | d("0027") }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# PKI / Smartcard configuration [[[
+# ---------------------------------
+
+# .. envvar:: sssd__smartcard [[[
+#
+# Enable or disable support for smartcard-based logins. Currently relies on
+# :ref:`debops.kerberos` PKINIT support.
+sssd__smartcard: '{{ ansible_local.kerberos.default_realm_opts.pki_smartcard | d(False) }}'
+
+                                                                   # ]]]
+# .. envvar:: sssd__pki_path [[[
+#
+# Base PKI directory.
+sssd__pki_path: '{{ ansible_local.pki.path | d("/etc/pki/realms") }}'
+
+                                                                   # ]]]
+# .. envvar:: sssd__pki_realm [[[
+#
+# Default PKI realm.
+sssd__pki_realm: 'kerberos'
+
+                                                                   # ]]]
+# .. envvar:: sssd__pki_ca [[[
+#
+# Name of the Certificate Authority certificate file, relative to the PKI realm
+# directory.
+sssd__pki_ca: 'CA.crt'
+
+                                                                   # ]]]
+# .. envvar:: sssd__pki_ca_path [[[
+#
+# Absolute path of the Certificate Authority certificate file.
+sssd__pki_ca_path: '{{ sssd__pki_path
+                       + "/" + sssd__pki_realm
+                       + "/" + sssd__pki_ca }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # LDAP environment [[[
@@ -172,6 +218,10 @@ sssd__default_configuration:
         value: [ 'nss', 'pam', 'sudo', 'ssh' ]
         state: '{{ "present" if ansible_distribution_release in ["stretch", "buster", "bionic"] else "ignore" }}'
 
+      - name: 'certificate_verification'
+        comment: 'SSSD checks the OCSP status of certificates, which the PKI role is not ready for'
+        value: 'no_ocsp'
+
       - name: 'debug_level'
         comment: |
           Note that debug level is a bitmap and only applies to a given section
@@ -211,6 +261,16 @@ sssd__default_configuration:
         comment: 'Delay (in minutes) between login attempts after offline_failed_login_attempts has been reached'
         value: 1
 
+      - name: 'pam_cert_auth'
+        comment: 'Allow certificate (smartcard) based login'
+        value: True
+        state: '{{ "present" if sssd__smartcard | d(False) else "absent" }}'
+
+      - name: 'pam_cert_db_path'
+        comment: 'Path to the CA certificate used to validate user certificates'
+        value: '{{ sssd__pki_ca_path }}'
+        state: '{{ "present" if sssd__smartcard | d(False) else "absent" }}'
+
   - section: 'sudo'
     title: 'Sudo directives'
     options:
@@ -249,14 +309,14 @@ sssd__default_configuration:
           The authentication provider to use for the domain. Possible providers
           include e.g. ldap, krb5, ipa and ad (see the corresponding sssd-* man
           pages).
-        value: 'ldap'
+        value: '{{ "krb5" if ansible_local.kerberos.enabled | d(False) else "ldap" }}'
 
       - name: 'chpass_provider'
         comment: |
           The password change provider to use for the domain. Possible providers
           include e.g. ldap, krb5, ipa and ad (see the corresponding sssd-* man
           pages).
-        value: 'ldap'
+        value: '{{ "krb5" if ansible_local.kerberos.enabled | d(False) else "ldap" }}'
 
       - name: 'sudo_provider'
         comment: |
@@ -299,10 +359,11 @@ sssd__default_configuration:
       - name: 'ldap_pwd_policy'
         comment: |
           Which policy should be used to evaluate password expiration
-          (none, shadow, mit_kerberos). Note that if you enable this, users
-          without shadowAccount attributes *will* be denied access.
-        value: 'shadow'
-        state: 'comment'
+          (none, shadow, mit_kerberos). Note that if you set this to shadow and
+          enable it, users without shadowAccount attributes *will* be denied
+          access.
+        value: '{{ "mit_kerberos" if ansible_local.kerberos.enabled | d(False) else "shadow" }}'
+        state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "comment" }}'
 
       - name: 'ldap_connection_expire_timeout'
         comment: |
@@ -343,9 +404,7 @@ sssd__default_configuration:
 
       - name: 'ldap_id_use_start_tls'
         comment: 'SSL options'
-        value: '{{ True
-                  if (ansible_local | d() and ansible_local.ldap | d() and
-                      (ansible_local.ldap.start_tls | d()) | bool)
+        value: '{{ True if ansible_local.ldap.start_tls | d(False) | bool
                   else False }}'
 
       - name: 'ldap_tls_reqcert'
@@ -374,8 +433,74 @@ sssd__default_configuration:
         value: '{{ sssd__ldap_base_dn | join(",") + "?subtree?" + sssd__ldap_host_filter }}'
 
       - name: 'ldap_sudo_search_base'
-        value: '{{ sssd__ldap_base_dn | join(",") + "?subtree?" + "" }}'
+        value: '{{ sssd__ldap_base_dn | join(",") + "?subtree?" }}'
         state: 'comment'
+
+      - name: 'ldap_sudo_full_refresh_interval'
+        comment: 'Seconds between executing a full refresh of sudo rules'
+        value: 21600
+        state: 'comment'
+
+      - name: 'ldap_sudo_smart_refresh_interval'
+        comment: 'Seconds between executing an incremental refresh of sudo rules'
+        value: 900
+        state: 'comment'
+
+      - name: 'krb5_use_kdcinfo'
+        comment: |
+          Rely on the information defined in /etc/krb5.conf.
+        value: False
+        state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "absent" }}'
+
+      - name: 'krb5_realm'
+        value: '{{ ansible_local.kerberos.default_realm | d("") }}'
+        state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "absent" }}'
+
+      - name: 'krb5_store_password_if_offline'
+        comment: |
+          If the password of the user should be stored and used to
+          automatically request a Kerberos ticket once the system is online.
+        value: True
+        state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "absent" }}'
+
+  - section: 'certmap/default/main'
+    title: 'Certificate mapping rules for the default domain'
+    state: '{{ "present" if sssd__smartcard | d(False) else "absent" }}'
+    options:
+
+      - name: 'matchrule'
+        comment: 'Rules defining which certificates should be considered for login'
+        value: >-
+          {%-  set organization = ansible_local.kerberos.default_realm
+                                 | d(ansible_domain)
+                                 | split(".") | first | capitalize -%}
+          {%-  set dn = [ ansible_local.ldap.people_rdn | d("ou=People") ] +
+                        ansible_local.ldap.base_dn | d([]) -%}
+          {%-  set moddn = [] -%}
+          {%-  for rdn in dn -%}
+          {%-    set parts = rdn | split("=") -%}
+          {%-    set _ = moddn.append(parts[0] | upper + "=" + parts[1]) -%}
+          {%-  endfor -%}
+          {%-  set rules = [ "&&",
+                            "<ISSUER>^OU=Kerberos CA,O=",
+                            organization,
+                            "$<SUBJECT>.*,",
+                            moddn | join(","),
+                            "$<EKU>pkinit" ] -%}
+          {{-  rules | join("") -}}
+
+      - name: 'maprule'
+        comment: |
+          How to map a given certificate to a user in the LDAP DIT
+        value: 'LDAPU1:(uid={subject_dn_component.uid})'
+
+      - name: 'priority'
+        comment: 'Positive integer, a lower number means higher priority'
+        value: '10'
+
+      - name: 'domains'
+        comment: 'Domains which the rules apply to'
+        value: 'default'
 
                                                                    # ]]]
 # .. envvar:: sssd__configuration [[[
@@ -407,6 +532,7 @@ sssd__combined_configuration: '{{ sssd__default_configuration
                                    + sssd__configuration
                                    + sssd__group_configuration
                                    + sssd__host_configuration }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # Configuration for other Ansible roles [[[
@@ -423,7 +549,7 @@ sssd__ldap__dependent_tasks:
     attributes: '{{ sssd__ldap_self_attributes }}'
     no_log: '{{ debops__no_log | d(True) }}'
     state: '{{ "present"
-               if ((ansible_local.ldap.posix_enabled | d()) | bool and
+               if (ansible_local.ldap.posix_enabled | d() | bool and
                    sssd__ldap_device_dn | d())
                else "ignore" }}'
 
@@ -432,6 +558,7 @@ sssd__ldap__dependent_tasks:
 #
 # Configuration for the :ref:`debops.nsswitch` Ansible role.
 sssd__nsswitch__dependent_services: [ 'sss' ]
+
                                                                    # ]]]
 # .. envvar:: sssd__apparmor__dependent_locals [[[
 #
