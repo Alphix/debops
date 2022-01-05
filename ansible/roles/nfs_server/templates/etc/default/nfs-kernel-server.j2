@@ -1,5 +1,6 @@
 {# Copyright (C) 2017 Maciej Delmanowski <drybjed@gmail.com>
- # Copyright (C) 2017 DebOps <https://debops.org/>
+ # Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2017-2023 DebOps <https://debops.org/>
  # SPDX-License-Identifier: GPL-3.0-only
  #}
 # {{ ansible_managed }}
@@ -15,11 +16,11 @@ RPCNFSDPRIORITY={{ nfs_server__priority }}
 # a fixed port here using the --port option. For more information,
 # see rpc.mountd(8) or https://wiki.debian.org/SecuringNFS
 # To disable NFSv4 on the server, specify '--no-nfs-version 4' here
-RPCMOUNTDOPTS="{{ nfs_server__mountd_options if nfs_server__mountd_options is string else nfs_server__mountd_options | join(' ') }}"
+RPCMOUNTDOPTS="{{ [ nfs_server__mountd_options | d([]) ] | flatten | join(' ') }}"
 
 # Do you want to start the svcgssd daemon? It is only required for Kerberos
 # exports. Valid alternatives are "yes" and "no"; the default is "no".
-NEED_SVCGSSD="{{ 'yes' if nfs_server__kerberos | bool else 'no' }}"
+NEED_SVCGSSD="no"
 
 # Options for rpc.svcgssd.
-RPCSVCGSSDOPTS="{{ nfs_server__svcgssd_options if nfs_server__svcgssd_options is string else nfs_server__svcgssd_options | join(' ') }}"
+RPCSVCGSSDOPTS=""

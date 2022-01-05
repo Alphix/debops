@@ -2,7 +2,8 @@
 # .. vim: foldmarker=[[[,]]]:foldmethod=marker
 
 # .. Copyright (C) 2013-2017 Maciej Delmanowski <drybjed@gmail.com>
-# .. Copyright (C) 2015-2017 DebOps <https://debops.org/>
+# .. Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2015-2023 DebOps <https://debops.org/>
 # .. SPDX-License-Identifier: GPL-3.0-only
 
 # .. _nfs__ref_defaults:
@@ -29,6 +30,7 @@ nfs__base_packages: [ 'nfs-common' ]
 #
 # List of additional APT packages to install with NFS support.
 nfs__packages: []
+
                                                                    # ]]]
                                                                    # ]]]
 # NFS mount configuration [[[
@@ -36,8 +38,39 @@ nfs__packages: []
 
 # .. envvar:: nfs__kerberos [[[
 #
-# Enable Kerberos support. Currently doesn't do much.
-nfs__kerberos: False
+# Enable Kerberos support.
+nfs__kerberos: '{{ ansible_local.kerberos.enabled | d(False) }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs__kerberos_princ [[[
+#
+# The Kerberos principal for the nfs service.
+nfs__kerberos_princ: '{{ "nfs/" + ansible_fqdn + "@"
+                         + (ansible_local.kerberos.default_realm |
+                            d(nfs__kerberos_realms | list | first | upper)) }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs__kerberos_realms [[[
+#
+# List or string with local Kerberos realms.
+nfs__kerberos_realms: '{{ ansible_local.kerberos.default_realm
+                          | d(ansible_domain) | upper }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs__cache [[[
+#
+# Enable local filesystem cacheing using :ref:`debops.cachefilesd`.
+nfs__cache: False
+
+                                                                   # ]]]
+# .. envvar:: nfs__domain [[[
+#
+# The local NFSv4 domain name. An NFSv4 domain is a namespace with a unique
+# username<->UID and groupname<->GID mapping. The NFSv4 domain is therefore
+# separate from the actual server domain or Kerberos realm(s). The default
+# should be fine for most users.
+nfs__domain: '{{ ansible_local.kerberos.default_realm
+                 | d(ansible_domain) | lower }}'
 
                                                                    # ]]]
 # .. envvar:: nfs__default_mount_type [[[
@@ -52,14 +85,30 @@ nfs__default_mount_type: 'nfs4'
 # List of :command:`mount` options that are added to all mount points
 # configured by this role. These should ensure correct operation for a network
 # mount point.
-nfs__base_mount_options: [ 'proto=tcp', 'port=2049', '_netdev' ]
+nfs__base_mount_options:
+
+  - 'proto=tcp'
+  - 'port=2049'
+  - '_netdev'
+  - 'x-systemd.after=named.service'
+  - 'x-systemd.after=pdns.service'
+  - 'x-systemd.automount'
 
                                                                    # ]]]
 # .. envvar:: nfs__security_mount_options [[[
 #
 # List of :command:`mount` options related to Kerberos security, added to all
 # mount points configured by this role.
-nfs__security_mount_options: '{{ ["sec=krb5p"] if nfs__kerberos | bool else ["sec=sys"] }}'
+nfs__security_mount_options: '{{ ["sec=krb5p", "x-systemd.after=rpc-gssd.service"]
+                                 if nfs__kerberos | bool
+                                 else ["sec=sys"] }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs__cache_mount_options [[[
+#
+# List of :command:`mount` options related to local caching, added to all
+# mount points configured by this role.
+nfs__cache_mount_options: '{{ ["fsc"] if nfs__cache | bool else [] }}'
 
                                                                    # ]]]
 # .. envvar:: nfs__default_mount_options [[[
@@ -67,7 +116,8 @@ nfs__security_mount_options: '{{ ["sec=krb5p"] if nfs__kerberos | bool else ["se
 # List of default :command:`mount` options added to all mount point configured
 # by this role if no options are specified in the configuration of a given NFS
 # share.
-nfs__default_mount_options: [ 'noatime', 'nosuid', 'nodev', 'hard', 'intr' ]
+nfs__default_mount_options: [ 'noatime', 'nosuid', 'nodev', 'hard' ]
+
                                                                    # ]]]
                                                                    # ]]]
 # NFS shares [[[
@@ -93,6 +143,7 @@ nfs__group_shares: []
 #
 # List of NFS shares configured on specific hosts in the Ansible inventory.
 nfs__host_shares: []
+
                                                                    # ]]]
                                                                    # ]]]
                                                                    # ]]]

@@ -1,5 +1,5 @@
 {# Copyright (C) 2013-2020 Maciej Delmanowski <drybjed@gmail.com>
- # Copyright (C) 2015-2020 DebOps <https://debops.org/>
+ # Copyright (C) 2015-2023 DebOps <https://debops.org/>
  # SPDX-License-Identifier: GPL-3.0-only
  #}
 {% set nfs__tpl_mount_options = [] %}
@@ -11,7 +11,10 @@
 {%   set _ = nfs__tpl_mount_options.extend((nfs__default_mount_options.split(',') if nfs__default_mount_options is string else nfs__default_mount_options)) %}
 {% endif %}
 {% if (item.default_options | d(True)) | bool %}
-{{ (nfs__security_mount_options + nfs__tpl_mount_options + nfs__base_mount_options) | unique | join(',') | to_yaml }}
+{{   (nfs__security_mount_options
+      + nfs__cache_mount_options
+      + nfs__tpl_mount_options
+      + nfs__base_mount_options) | unique | join(',') | to_yaml }}
 {% else %}
-{{ (nfs__tpl_mount_options + [ '_netdev' ]) | unique | join(',') | to_yaml }}
+{{   (nfs__tpl_mount_options + [ '_netdev' ]) | unique | join(',') | to_yaml }}
 {% endif %}

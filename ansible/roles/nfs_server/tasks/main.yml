@@ -1,6 +1,7 @@
 ---
 # Copyright (C) 2017 Maciej Delmanowski <drybjed@gmail.com>
-# Copyright (C) 2017 DebOps <https://debops.org/>
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2017-2023 DebOps <https://debops.org/>
 # SPDX-License-Identifier: GPL-3.0-only
 
 - name: Import DebOps global handlers
@@ -15,7 +16,15 @@
   register: nfs_server__register_packages
   until: nfs_server__register_packages is succeeded
 
-- name: Configure NFS server
+- name: Create the /etc/nfs.conf.d/ directory
+  ansible.builtin.file:
+    path: '/etc/nfs.conf.d'
+    state: 'directory'
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+
+- name: Configure the NFS server
   ansible.builtin.template:
     src: '{{ item }}.j2'
     dest: '/{{ item }}'
@@ -26,10 +35,32 @@
     - 'etc/default/nfs-common'
     - 'etc/default/nfs-kernel-server'
     - 'etc/modprobe.d/nfs-server.conf'
-  notify:
-    - 'Restart nfs-kernel-server service'
+    - 'etc/nfs.conf.d/local.conf'
+  notify: [ 'Restart nfs-kernel-server service' ]
 
-- name: Create /etc/exports.d/ directory
+- name: Configure NFSv4 ID-name mapping
+  template:
+    src: 'etc/idmapd.conf.j2'
+    dest: '/etc/idmapd.conf'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  notify: [ 'Restart nfs-idmapd service' ]
+
+# Note: this is mostly cosmetic, the rpc-svcgssd service file already contains
+#       a check for if gssproxy is running and won't start in that case, but
+#       that means it'll show up as a failed unit in "systemctl status".
+#       Also, simply disabling the service isn't enough since it'll be pulled
+#       in by optional dependencies from other service files.
+- name: Disable the rpc-svcgssd.service systemd unit
+  systemd:  # noqa no-handler
+    name: 'rpc-svcgssd.service'
+    state: 'stopped'
+    masked: 'yes'
+  when: ansible_service_mgr == 'systemd' and
+        not ansible_check_mode
+
+- name: Create the /etc/exports.d/ directory
   ansible.builtin.file:
     path: '/etc/exports.d'
     state: 'directory'

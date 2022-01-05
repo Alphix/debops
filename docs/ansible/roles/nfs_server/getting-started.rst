@@ -16,7 +16,7 @@ Default configuration
 
 The role by default focuses on the NFSv4 support. The NFSv3 support can be
 enabled by setting the :envvar:`nfs_server__v3` variable to ``True``.
-The Kerberos support is not fully implemented at this point.
+The Kerberos support is not fully automated at this point.
 
 By default role expects a list of allowed clients in the
 :envvar:`nfs_server__allow` variable. Example:

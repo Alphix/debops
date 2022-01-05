@@ -1,0 +1,64 @@
+{# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2023 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+# {{ ansible_managed }}
+#
+# /etc/idmapd.conf
+#
+# This is file is used by:
+#   rpc.idmapd(8) on NFSv4 servers
+#   nfsidmap(5) on NFSv4 clients
+#
+# See idmapd.conf(5) for details.
+
+[General]
+
+# Set to > 0 to enable debugging
+Verbosity = 0
+
+# The local NFSv4 domain name. An NFSv4 domain is a namespace with a unique
+# username<->UID and groupname<->GID mapping. The NFSv4 domain is therefore
+# separate from the actual server domain or Kerberos realm(s). Defaults
+# to the host's DNS domain name.
+Domain = {{ nfs_server__domain }}
+
+# Comma-separated list of Kerberos realms that should be considered local.
+Local-Realms = {{ [ nfs_server__kerberos_realms | d([]) ] | flatten | join(',') }}
+
+# Cache expiration in seconds
+Cache-Expiration = 60
+
+# Socket to use for communication
+Pipefs-Directory = /run/rpc_pipefs
+
+
+[Mapping]
+# Local fallback username when a mapping cannot be completed
+Nobody-User = nobody
+
+# Local fallback groupname when a mapping cannot be completed
+Nobody-Group = nogroup
+
+
+[Translation]
+# Comma-separated, ordered list of mapping methods to use when mapping
+# between NFSv4 names and local IDs. Each method is tried in order until a
+# mapping is found.  Available methods include "nsswitch", "static",
+# "umich_ldap" and "sss".
+#
+# Note that the "sss" plugin (sss_rpcidmapd(5)) is currently unsuitable for
+# DebOps as it doesn't seem to offer any benefits over the nsswitch method
+# which will automatically use sssd and also requires
+# "use_fully_qualified_names" to be enabled in sssd (which results in
+# usernames like foobar@example.com).
+Method = nsswitch
+
+# Same as Method, but for mapping between GSS Authenticated names
+# (i.e. Kerberos principals) and local IDs.
+GSS-Methods = nsswitch
+
+
+[Static]
+# A static list of GSS-Authenticated names to local user name mappings
+# someuser@REALM = localuser

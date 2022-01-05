@@ -1,12 +1,24 @@
 ---
 # Copyright (C) 2017 Maciej Delmanowski <drybjed@gmail.com>
-# Copyright (C) 2017-2022 DebOps <https://debops.org/>
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2017-2023 DebOps <https://debops.org/>
 # SPDX-License-Identifier: GPL-3.0-only
 
 - name: Restart nfs-kernel-server service
   ansible.builtin.service:
     name: 'nfs-kernel-server'
     state: 'restarted'
+
+- name: Restart nfs-idmapd service
+  ansible.builtin.service:
+    name: 'nfs-idmapd'
+    state: 'restarted'
+
+- name: Restart rpc-gssd service
+  ansible.builtin.service:
+    name: 'rpc-gssd'
+    state: 'restarted'
+  when: not ansible_check_mode
 
 - name: Reload NFS exports
   ansible.builtin.command: exportfs -ra

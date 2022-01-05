@@ -16,6 +16,7 @@ debops.nfs_server
    getting-started
    defaults/main
    defaults-detailed
+   kerberos
 
 Copyright
 ---------
