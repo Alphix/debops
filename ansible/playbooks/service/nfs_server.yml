@@ -31,6 +31,16 @@
       tcpwrappers__dependent_allow:
         - '{{ nfs_server__tcpwrappers__dependent_allow }}'
 
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+      ldap__dependent_tasks:
+        - '{{ nfs_server__ldap__dependent_tasks }}'
+
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__dependent_tasks:
+        - '{{ nfs_server__kerberos__dependent_tasks }}'
+
     - role: gssproxy
       tags: [ 'role::gssproxy', 'skip::gssproxy' ]
       gssproxy__dependent_configuration:

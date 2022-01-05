@@ -615,6 +615,49 @@ nfs_server__combined_exports: '{{ q("flattened",
 
                                                                    # ]]]
                                                                    # ]]]
+# LDAP environment [[[
+# --------------------
+
+# .. envvar:: nfs_server__ldap_device_dn [[[
+#
+# The Distinguished Name of the current host LDAP object, defined as a YAML
+# list. It will be used as a base for the NFS service account LDAP object. If
+# the list is empty, the role will not create the account LDAP object
+# automatically.
+nfs_server__ldap_device_dn: '{{ ansible_local.ldap.device_dn | d([]) }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__ldap_self_rdn [[[
+#
+# The Relative Distinguished Name of the account LDAP object used by the NFS
+# service.
+nfs_server__ldap_self_rdn: 'uid=nfs'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__ldap_self_object_classes [[[
+#
+# List of the LDAP object classes which will be used to create the LDAP object
+# used by the NFS service.
+nfs_server__ldap_self_object_classes: [ 'account', 'krbPrincipalAux' ]
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__ldap_self_attributes [[[
+#
+# YAML dictionary that defines the attributes of the LDAP object used by the
+# NFS service.
+nfs_server__ldap_self_attributes:
+  uid: '{{ nfs_server__ldap_self_rdn.split("=")[1] }}'
+  host: '{{ [ ansible_fqdn, ansible_hostname ] | unique }}'
+  description: 'Account used by the "nfs" service to store its Kerberos principal'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__ldap_self_dn [[[
+#
+# The Distinguished Name of the account LDAP object used by the NFS service.
+nfs_server__ldap_self_dn: '{{ ([ nfs_server__ldap_self_rdn ] + nfs_server__ldap_device_dn) | join(",") }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
 # Configuration for other Ansible roles [[[
 # -----------------------------------------
 
@@ -667,6 +710,32 @@ nfs_server__ferm__dependent_rules:
     protocol: '{{ nfs_server__firewall_protocols }}'
     saddr: '{{ nfs_server__allow }}'
     accept_any: '{{ nfs_server__accept_any }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__ldap__dependent_tasks [[[
+#
+# Configuration for the :ref:`debops.ldap` Ansible role.
+nfs_server__ldap__dependent_tasks:
+
+  - name: 'Create nfs account for {{ nfs_server__ldap_device_dn | join(",") }}'
+    dn: '{{ nfs_server__ldap_self_dn }}'
+    objectClass: '{{ nfs_server__ldap_self_object_classes }}'
+    attributes: '{{ nfs_server__ldap_self_attributes }}'
+    state: '{{ "present" if nfs_server__ldap_device_dn | d() else "ignore" }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__kerberos__dependent_tasks [[[
+#
+# Configuration for the :ref:`debops.kerberos` Ansible role.
+nfs_server__kerberos__dependent_tasks:
+  - name: 'Ensure that the Kerberos principal {{ nfs_server__kerberos_princ }} exists'
+    principal: '{{ nfs_server__kerberos_princ }}'
+    path: '/etc/krb5.keytab.d/nfs.keytab'
+    mode: '0640'
+    owner: 'root'
+    group: 'root'
+    state: '{{ "present" if nfs_server__kerberos | d(False) | bool else "ignore" }}'
+    ldap_dn: '{{ nfs_server__ldap_self_dn if nfs_server__ldap_device_dn | d() else omit }}'
 
                                                                    # ]]]
 # .. envvar:: nfs_server__gssproxy__dependent_configuration [[[

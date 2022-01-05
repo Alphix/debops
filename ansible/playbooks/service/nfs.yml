@@ -20,5 +20,15 @@
       tags: [ 'role::cachefilesd', 'skip::cachefilesd' ]
       when: nfs__cache | d(False) | bool
 
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+      ldap__dependent_tasks:
+        - '{{ nfs__ldap__dependent_tasks }}'
+
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__dependent_tasks:
+        - '{{ nfs__kerberos__dependent_tasks }}'
+
     - role: nfs
       tags: [ 'role::nfs', 'skip::nfs' ]
