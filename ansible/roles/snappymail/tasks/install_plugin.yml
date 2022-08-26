@@ -1,0 +1,92 @@
+---
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2023 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+- name: Plugin {{ snappymail__plugin.name }} - download archive
+  ansible.builtin.get_url:
+    url: '{{ snappymail__plugin.remote_url }}'
+    dest: '{{ snappymail__archive_dir + "/" + snappymail__plugin.local_filename }}'
+  register: snappymail__register_plugin_download
+  until: snappymail__register_plugin_download is succeeded
+  become: True
+  become_user: '{{ snappymail__user }}'
+
+- name: Plugin {{ snappymail__plugin.name }} - download signature
+  ansible.builtin.get_url:
+    url: '{{ snappymail__plugin.remote_signature }}'
+    dest: '{{ snappymail__archive_dir + "/" + snappymail__plugin.local_signature }}'
+  register: snappymail__register_plugin_signature_download
+  until: snappymail__register_plugin_signature_download is succeeded
+  become: True
+  become_user: '{{ snappymail__user }}'
+
+- name: Plugin {{ snappymail__plugin.name }} - verify signature
+  ansible.builtin.command: gpg --verify {{ snappymail__plugin.local_signature | quote }}
+  args:
+    chdir: '{{ snappymail__archive_dir }}'
+  become: True
+  become_user: '{{ snappymail__user }}'
+  changed_when: False
+
+- name: Plugin {{ snappymail__plugin.name }} - find existing installation
+  ansible.builtin.stat:
+    path: '{{ snappymail__plugin.plugin_dir }}'
+  register: snappymail__register_old_plugin
+
+- name: Plugin {{ snappymail__plugin.name }} - remove conflicting files
+  ansible.builtin.file:
+    path: '{{ snappymail__plugin.plugin_dir }}'
+    state: 'absent'
+  when:
+    - snappymail__register_old_plugin.stat.exists
+    - not snappymail__register_old_plugin.stat.isdir
+
+- name: Plugin {{ snappymail__plugin.name }} - determine installed version
+  ansible.builtin.command: sed -n -e "s/\s*VERSION\s*=\s*'\([^']*\)'.*/\1/p" {{ snappymail__plugin.plugin_dir + "/index.php" | quote }}
+  changed_when: False
+  register: snappymail__register_old_plugin_version
+  when:
+    - snappymail__register_old_plugin.stat.exists
+    - snappymail__register_old_plugin.stat.isdir
+
+- name: Plugin {{ snappymail__plugin.name }} - register installed version
+  ansible.builtin.set_fact:
+    snappymail__old_plugin_version: '{{ snappymail__register_old_plugin_version.stdout_lines | d([]) | first | d("") }}'
+
+- name: Plugin {{ snappymail__plugin.name }} - remove old version {{ snappymail__old_plugin_version }}
+  ansible.builtin.file:
+    path: '{{ snappymail__plugin.plugin_dir }}'
+    state: 'absent'
+  when: snappymail__old_plugin_version != snappymail__plugin.remote_version
+
+- name: Plugin {{ snappymail__plugin.name }} - install version {{ snappymail__plugin.remote_version }}
+  ansible.builtin.unarchive:
+    remote_src: 'yes'
+    src: '{{ snappymail__archive_dir + "/" + snappymail__plugin.local_filename }}'
+    dest: '{{ snappymail__plugins_dir }}'
+    owner: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    mode: 'u=rwX,g=rX,o=rX'
+    creates: '{{ snappymail__plugin.plugin_dir }}'
+
+# Ansible unarchive doesn't set owner/group for all dirs, see issue #35426
+- name: Plugin {{ snappymail__plugin.name }} - ensure permissions are correct
+  ansible.builtin.file:
+    path: '{{ snappymail__plugin.plugin_dir }}'
+    state: 'directory'
+    owner: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    mode: 'u=rwX,g=rX,o=rX'
+    recurse: 'yes'
+
+- name: Plugin {{ snappymail__plugin.name }} - install configuration file
+  ansible.builtin.template:
+    src: 'srv/www/sites/snappymail/data/_data_/_default_/configs/plugin.json.j2'
+    dest: '{{ snappymail__plugin.config_path
+              | d(snappymail__configs_dir + "/plugin-" + snappymail__plugin.name + ".json") }}'
+    owner: '{{ snappymail__plugin.config_owner | d(snappymail__user) }}'
+    group: '{{ snappymail__plugin.config_group | d(snappymail__group) }}'
+    mode: '{{ snappymail__plugin.config_mode | d("0640") }}'
+    force: '{{ snappymail__overwrite_configuration | d(False) }}'
+  when: snappymail__plugin.options | d([]) | length > 0

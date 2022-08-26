@@ -1,0 +1,2012 @@
+---
+# .. vim: foldmarker=[[[,]]]:foldmethod=marker
+
+# .. Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2023 DebOps <https://debops.org/>
+# .. SPDX-License-Identifier: GPL-3.0-only
+
+# .. _snappymail__ref_defaults:
+
+# debops.snappymail default variables [[[
+# ======================================
+
+# .. contents:: Sections
+#    :local:
+#
+# .. include:: ../../../../includes/global.rst
+
+
+# Branding [[[
+# ------------
+
+# .. envvar:: snappymail__title [[[
+#
+# Text to use as the page title.
+snappymail__title: 'SnappyMail Webmail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__loading [[[
+#
+# Text displayed at startup.
+snappymail__loading: 'SnappyMail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__favicon [[[
+#
+# URL of the favicon to use.
+snappymail__favicon: ''
+
+                                                                   # ]]]
+# .. envvar:: snappymail__default_theme [[[
+#
+# Default theme to use.
+snappymail__default_theme: 'Default'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Web Administration [[[
+# ----------------------
+
+# .. envvar:: snappymail__admin_enabled [[[
+#
+# Enable configuration via the administrator webpage, which can be accessed at
+# ``https://<webmail_host>/?admin`` after SnappyMail has been installed and
+# configured.
+snappymail__admin_enabled: True
+
+                                                                   # ]]]
+# .. envvar:: snappymail__admin_user [[[
+#
+# Username for the administrator account.
+snappymail__admin_user: 'admin'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__admin_password_path [[[
+#
+# Path to the administrator password file.
+snappymail__admin_password_path: '{{ secret + "/credentials/"
+                                     + inventory_hostname
+                                     + "/snappymail/admin/"
+                                     + snappymail__admin_user
+                                     + "/password" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__admin_password_salt_path [[[
+#
+# Path to the administrator password salt file.
+snappymail__admin_password_salt_path: '{{ secret + "/credentials/"
+                                          + inventory_hostname
+                                          + "/snappymail/admin/"
+                                          + snappymail__admin_user
+                                          + "/salt" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__admin_password [[[
+#
+# Password for the administrator account. By default, a random password
+# will be generated and stored on the Ansible controller.
+snappymail__admin_password: '{{ lookup("password",
+                                       snappymail__admin_password_path
+                                       + " length=16") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__admin_password_salt [[[
+#
+# Salt used to hash the password for the administrator account. By default, a
+# random salt will be generated and stored on the Ansible controller.
+snappymail__admin_password_salt: '{{ lookup("password",
+                                            snappymail__admin_password_salt_path
+                                            + " chars=ascii_letters,digits"
+                                            + " length=16") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__admin_password_hash [[[
+#
+# Hashed password for the administrator account.
+snappymail__admin_password_hash: '{{ snappymail__admin_password
+                                     | password_hash("sha512",
+                                                     salt=snappymail__admin_password_salt) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__overwrite_configuration [[[
+#
+# Whether local modifications to configuration files (including changes
+# made via the web administration interface) should be overwritten
+# by Ansible.
+snappymail__overwrite_configuration: True
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Packages and installation [[[
+# -----------------------------
+
+# .. envvar:: snappymail__required_php_packages [[[
+#
+# List of required PHP packages.
+snappymail__required_php_packages:
+  - 'json'
+  - 'mbstring'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__optional_php_packages [[[
+#
+# List of recommended/optional PHP packages.
+snappymail__optional_php_packages:
+  - 'intl'
+  - 'uuid'
+  - '{{ "ldap"      if snappymail__ldap_enabled               else [] }}'
+  - '{{ "memcached" if snappymail__cache_driver == "memcache" else [] }}'
+  - '{{ "apcu"      if snappymail__cache_driver == "apcu"     else [] }}'
+  - '{{ snappymail__database_map[snappymail__database].phppkg | d([]) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__custom_php_packages [[[
+#
+# User defined list of additional PHP packages.
+snappymail__custom_php_packages: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__php_packages [[[
+#
+# Combined list of PHP packages.
+snappymail__php_packages:
+  - '{{ snappymail__required_php_packages }}'
+  - '{{ snappymail__optional_php_packages }}'
+  - '{{ snappymail__custom_php_packages }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__base_packages [[[
+#
+# List of ``.deb`` packages which are required for the SnappyMail installation.
+snappymail__base_packages:
+  - 'snappymail'
+  - '{{ snappymail__database_map[snappymail__database].debpkg | d([]) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__packages [[[
+#
+# List of ``.deb`` packages that should be installed together with SnappyMail.
+snappymail__packages: []
+
+                                                                   # ]]]
+                                                                   # ]]]
+# User account [[[
+# ----------------
+
+# .. envvar:: snappymail__user [[[
+#
+# SnappyMail system user account.
+snappymail__user: 'snappymail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__group [[[
+#
+# SnappyMail system user group.
+snappymail__group: 'snappymail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__home [[[
+#
+# Path to the home directory of the SnappyMail account.
+snappymail__home: '{{ ansible_local.fhs.home | d("/var/local")
+                      + "/" + snappymail__user }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__comment [[[
+#
+# The GECOS string for the SnappyMail account.
+snappymail__comment: 'SnappyMail Webmail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__shell [[[
+#
+# The default shell of the SnappyMail account.
+snappymail__shell: '/usr/sbin/nologin'
+                                                                   # ]]]
+                                                                   # ]]]
+# Source and deployment [[[
+# -------------------------
+
+# .. envvar:: snappymail__gpg_key [[[
+#
+# The GPG key used to sign SnappyMail releases.
+snappymail__gpg_key: '1016 E470 7914 5542 F8BA 1335 4820 8BA1 3290 F3EB'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__additional_gpg_keys [[[
+#
+# List of additional GPG keys to add to the SnappyMail user account. This might
+# be needed e.g. if installation of a private release is used instead of the
+# official one.
+snappymail__additional_gpg_keys: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__apt_repository [[[
+#
+# The APT repository from which to download SnappyMail packages.
+snappymail__apt_repository: 'deb [signed-by={{ snappymail__apt_keyring }}] https://snappymail.eu/repository/deb ./'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__apt_keyring [[[
+#
+# Path where the GPG keyring for the APT repository is stored.
+snappymail__apt_keyring: '/usr/share/keyrings/snappymail.gpg'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__www [[[
+#
+# Base web root directory for the SnappyMail website.
+snappymail__www: '{{ ansible_local.nginx.www | d("/srv/www") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__installed_dir [[[
+#
+# Base dir where the SnappyMail sources are installed.
+snappymail__installed_dir: '/usr/share/snappymail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__base_dir [[[
+#
+# Base dir for the SnappyMail website.
+snappymail__base_dir: '{{ snappymail__www + "/sites/" + snappymail__user }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__archive_dir [[[
+#
+# Base dir for the SnappyMail archive files.
+snappymail__archive_dir: '{{ snappymail__base_dir + "/archive" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__public_dir [[[
+#
+# Path where the source files will be deployed.
+snappymail__public_dir: '{{ snappymail__base_dir + "/public" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__data_dir [[[
+#
+# Path where SnappyMail will write data.
+snappymail__data_dir: '{{ snappymail__base_dir + "/data" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__data_default_dir [[[
+#
+# Path where SnappyMail will write data for the default site.
+snappymail__data_default_dir: '{{ snappymail__data_dir + "/_data_/_default_" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__plugins_dir [[[
+#
+# Path where plugins will be installed.
+snappymail__plugins_dir: '{{ snappymail__data_default_dir + "/plugins" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__domains_dir [[[
+#
+# Path where per-domain configuration files will be installed.
+snappymail__domains_dir: '{{ snappymail__data_default_dir + "/domains" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__configs_dir [[[
+#
+# Path where configuration files will be installed.
+snappymail__configs_dir: '{{ snappymail__data_default_dir + "/configs" }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Database configuration [[[
+# --------------------------
+
+# These variables control which database SnappyMail should use to store
+# per-user preferences and address books. The default is SQLite, which has
+# the advantage that it is simple and has very few dependencies. It is,
+# however, not recommended for large/busy sites, where a "real" database
+# (i.e. PostgreSQL or MariaDB) is recommended.
+
+# .. envvar:: snappymail__database [[[
+#
+# Database definition to use (cf. :envvar:`snappymail__database_map`).
+snappymail__database: 'sqlite'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__database_user [[[
+#
+# Database user account name.
+snappymail__database_user: 'snappymail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__database_password_path [[[
+#
+# Path to the database password file.
+snappymail__database_password_path: '{{ secret + "/credentials/"
+                                        + inventory_hostname + "/snappymail/"
+                                        + snappymail__database + "/"
+                                        + snappymail__database_user
+                                        + "/password" }}'
+
+                                                                   # ]]]
+# FIXME: This creates a password for SQLite as well...
+# .. envvar:: snappymail__database_password [[[
+#
+# Database password for the account given in
+# :envvar:`snappymail__database_user`.
+snappymail__database_password: '{{ lookup("password",
+                                          snappymail__database_password_path
+                                          + " length=30") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__database_name [[[
+#
+# Name of the database to use for SnappyMail.
+snappymail__database_name: '{{ snappymail__database_user }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__snapshot_deploy_state [[[
+#
+# If ``present``, the snapshot :command:`cron` jobs will be configured to run
+# the :command:`debops-snappymail-sqlite-snapshot` script periodically to
+# create snapshots of the SnappyMail SQLite database. If ``absent``, the
+# :command:`cron` jobs will be removed. See
+# :ref:`snappymail__ref_backup_restore` for more details.
+snappymail__snapshot_deploy_state: '{{ "present" if
+                                       snappymail__database_map[snappymail__database].dbtype
+                                       | d("") == "sqlite"
+                                       else "absent" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__snapshot_cron_jobs [[[
+#
+# List of :command:`cron` periods during which the
+# :command:`debops-snappymail-sqlite-snapshot` script should be executed to
+# create snapshots of the SnappyMail SQLite database.
+snappymail__snapshot_cron_jobs: [ 'daily', 'weekly', 'monthly' ]
+
+                                                                   # ]]]
+# .. envvar:: snappymail__snapshot_timeout [[[
+#
+# Timeout duration, in milliseconds, for the
+# :command:`debops-snappymail-sqlite-snapshot` script to wait for a database
+# lock.
+snappymail__snapshot_timeout: 60000
+
+                                                                   # ]]]
+# .. envvar:: snappymail__database_map [[[
+#
+# Database connection definitions. Select the database connection to use in
+# :envvar:`snappymail__database`.
+snappymail__database_map:
+
+  sqlite:
+    dbtype: 'sqlite'
+    phppkg: 'sqlite3'
+    debpkg: 'sqlite3'
+    cfgopt: 'sqlite'
+
+  mariadb:
+    dbtype: 'mariadb'
+    phppkg: 'mysql'
+    cfgopt: 'mysql'
+    dbname: '{{ snappymail__database_name }}'
+    dbuser: '{{ snappymail__database_user }}'
+    dbpass: '{{ snappymail__database_password }}'
+    dbhost: '{{ ansible_local.mariadb.host | d("localhost") }}'
+    dbport: '{{ ansible_local.mariadb.port | d(3306) }}'
+
+  postgresql:
+    dbtype: 'pgsql'
+    phppkg: 'pgsql'
+    cfgopt: 'pgsql'
+    dbname: '{{ snappymail__database_name }}'
+    dbuser: '{{ snappymail__database_user }}'
+    dbpass: '{{ snappymail__database_password }}'
+    dbhost: '{{ ansible_local.postgresql.host | d("localhost") }}'
+    dbport: '{{ ansible_local.postgresql.port | d(5432) }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Cache configuration [[[
+# -----------------------
+
+# .. envvar:: snappymail__cache_driver [[[
+#
+# The type of cache to use. Currently supported options are (in order of
+# preference): ``redis``, ``memcache``, ``apcu`` and ``files``. By default, the
+# cache type will be selected automatically by detecting available cache
+# services via Ansible local facts.
+snappymail__cache_driver: '{{ "redis" if
+                              ansible_local.redis_server.installed | d(False)
+                              else ("memcache" if
+                                    ansible_local.memcached.installed | d(False)
+                                    else "apcu") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__redis_scheme [[[
+#
+# The scheme to use to connect to the Redis server, supported schemes
+# are `tcp`, `tls`, `http` and `unix` (and also `redis` or `rediss`, which
+# are basically the same as `tcp` and `tls`, but with a slightly different
+# syntax). By default the Redis instance on the same host will be used,
+# if discovered via Ansible local facts.
+snappymail__redis_scheme: 'tcp'
+
+# .. envvar:: snappymail__redis_host [[[
+#
+# The address of the Redis server instance to use. By default the Redis
+# instance on the same host will be used, if it's detected via Ansible local
+# facts.
+snappymail__redis_host: '{{ ansible_local.redis_server.bind
+                            | d("127.0.0.1") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__redis_port [[[
+#
+# The TCP port to use for Redis connections.
+snappymail__redis_port: '{{ ansible_local.redis_server.port | d("6379") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__redis_socket [[[
+#
+# The Unix socket to use for Redis connections.
+snappymail__redis_socket: '{{ ansible_local.redis_server.socket
+                              | d("/var/run/redis/redis-server.sock") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__redis_database [[[
+#
+# The Redis "database" number to use.
+snappymail__redis_database: '0'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__redis_password [[[
+#
+# The password to use for Redis connections.
+snappymail__redis_password: '{{ ansible_local.redis_server.password | d("") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__redis_url [[[
+#
+# The URL to use for Redis connections, as defined in the
+# `Predis Wiki <https://github.com/predis/predis/wiki/Connection-Parameters>`_
+# and `here <https://squizzle.me/php/predis/doc/Configuration>`_.
+snappymail__redis_url: '{{ snappymail__redis_scheme + "://"
+                           + (snappymail__redis_socket
+                              if (snappymail__redis_scheme == "unix")
+                              else (snappymail__redis_host + ":"
+                                    + snappymail__redis_port))
+                           + "?password=" + snappymail__redis_password
+                           + "&database=" + snappymail__redis_database }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__memcached_host [[[
+#
+# The :command:`memcached` host to use. By default, only a local instance will
+# be used, if detected. See :ref:`debops.memcached` for more details.
+snappymail__memcached_host: 'localhost'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__memcached_port [[[
+#
+# The :command:`memcached` port to use. By default, only a local instance will
+# be used, if detected.  See :ref:`debops.memcached` for more details.
+snappymail__memcached_port: '11211'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# LDAP configuration [[[
+# ----------------------
+
+# These variables configure the access to the LDAP address book managed by
+# DebOps. See the :ref:`debops.ldap` and :ref:`debops.slapd` role documentation
+# to learn more about managing LDAP infrastructure with DebOps.
+
+# .. envvar:: snappymail__ldap_enabled [[[
+#
+# Enable or disable the LDAP integration in SnappyMail.
+snappymail__ldap_enabled: '{{ ansible_local.ldap.enabled | d(False) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_uris [[[
+#
+# List of URIs of the LDAP directory server(s) which should be used.
+snappymail__ldap_uris: '{{ ansible_local.ldap.uri | d([]) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_use_tls [[[
+#
+# Enable or disable support for STARTTLS extension while connecting to the LDAP
+# directory.
+snappymail__ldap_use_tls: '{{ ansible_local.ldap.start_tls | d(True) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_base_dn [[[
+#
+# The Base Distinguished Name of the LDAP directory, defined as a YAML list.
+snappymail__ldap_base_dn: '{{ ansible_local.ldap.base_dn | d([]) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_device_dn [[[
+#
+# The Distinguished Name of the current host LDAP object, defined as a YAML
+# list. It will be used as a base for the SnappyMail application account LDAP
+# object. If the list is empty, the role will not create the account LDAP
+# object automatically.
+snappymail__ldap_device_dn: '{{ ansible_local.ldap.device_dn | d([]) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_self_rdn [[[
+#
+# The Relative Distinguished Name of the account LDAP object used by the
+# SnappyMail application to access the LDAP directory.
+snappymail__ldap_self_rdn: '{{ "uid=" + snappymail__user }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_self_object_classes [[[
+#
+# List of the LDAP object classes which will be used to create the LDAP object
+# used by the SnappyMail application to access the LDAP directory.
+snappymail__ldap_self_object_classes: [ 'account', 'simpleSecurityObject' ]
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_self_attributes [[[
+#
+# YAML dictionary that defines the attributes of the LDAP object used by the
+# SnappyMail application to access the LDAP directory.
+snappymail__ldap_self_attributes:
+  uid: '{{ snappymail__ldap_self_rdn.split("=")[1] }}'
+  userPassword: '{{ snappymail__ldap_bindpw }}'
+  host: '{{ [ ansible_fqdn, ansible_hostname ] | unique }}'
+  description: 'Account used by SnappyMail to access the LDAP directory'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_binddn [[[
+#
+# The Distinguished Name of the account LDAP object used by the SnappyMail
+# application to bind to the LDAP directory.
+snappymail__ldap_binddn: '{{ ([ snappymail__ldap_self_rdn ]
+                              + snappymail__ldap_device_dn) | join(",") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_bindpw [[[
+#
+# The password stored in the account LDAP object used by the SnappyMail
+# application to bind to the LDAP directory.
+snappymail__ldap_bindpw: '{{ lookup("ldap_password",
+                                    secret + "/ldap/credentials/",
+                                    snappymail__ldap_binddn, "length=32") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_people_rdn [[[
+#
+# The Relative Distinguished Name of the people subtree which contains personal
+# LDAP entries.
+snappymail__ldap_people_rdn: '{{ ansible_local.ldap.people_rdn | d([]) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap_people_dn [[[
+#
+# The Distinguished Name of the people subtree which will be used for LDAP
+# address book searches.
+snappymail__ldap_people_dn: '{{ ([ snappymail__ldap_people_rdn ]
+                                 + snappymail__ldap_base_dn) | join(",") }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Application options [[[
+# -----------------------
+
+# .. envvar:: snappymail__max_file_size [[[
+#
+# Maximum upload/attachment file size, in MB.
+snappymail__max_file_size: '30'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__domain [[[
+#
+# The DNS domain of the SnappyMail installation.
+snappymail__domain: '{{ ansible_domain }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__fqdn [[[
+#
+# The FQDN which should be used by end-users to access the SnappyMail web
+# application.
+snappymail__fqdn: 'webmail.{{ snappymail__domain }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__imap_srv_rr [[[
+#
+# List containing the result of the DNS query for IMAP ``SRV`` resource records
+# in the host's domain. See :ref:`dns_configuration_srv` for further details.
+snappymail__imap_srv_rr: '{{ q("debops.debops.dig_srv",
+                               "_imap._tcp." + snappymail__domain,
+                               ansible_fqdn
+                               if ansible_local.dovecot.installed | d(False)
+                               else "imap." + snappymail__domain, 143) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__imaps_srv_rr [[[
+#
+# List containing the result of the DNS query for IMAPS ``SRV`` resource
+# records in the host's domain.
+snappymail__imaps_srv_rr: '{{ q("debops.debops.dig_srv",
+                                "_imaps._tcp." + snappymail__domain,
+                                ansible_fqdn
+                                if ansible_local.dovecot.installed | d(False)
+                                else "imap." + snappymail__domain, 993) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__imap_fqdn [[[
+#
+# The FQDN address of the IMAP server to use. First, if :ref:`debops.imapproxy`
+# is installed, it will be used. Next, DNS SRV records are used to locate a
+# host. If there are no SRV records, any local :ref:`debops.dovecot`
+# installation is used. Finally, the fallback ``imap.<domain>`` is used.
+snappymail__imap_fqdn: '{{ ansible_local.imapproxy.listen_address
+                           | d(snappymail__imaps_srv_rr[0]["target"]
+                               if snappymail__imaps_srv_rr[0]["dig_srv_src"] != "fallback")
+                           | d(snappymail__imap_srv_rr[0]["target"]
+                               if snappymail__imap_srv_rr[0]["dig_srv_src"] != "fallback")
+                           | d(snappymail__imaps_srv_rr[0]["target"]) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__imap_port [[[
+#
+# TCP port used for IMAP connections
+snappymail__imap_port: '{{ ansible_local.imapproxy.listen_port
+                           | d(snappymail__imaps_srv_rr[0]["port"]
+                               if snappymail__imaps_srv_rr[0]["dig_srv_src"] != "fallback")
+                           | d(snappymail__imap_srv_rr[0]["port"]
+                               if snappymail__imap_srv_rr[0]["dig_srv_src"] != "fallback")
+                           | d(snappymail__imaps_srv_rr[0]["port"]) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__imap_secure [[[
+#
+# Whether IMAP connections should use TLS, SSL or no encryption.
+# Valid values are:
+#   0 - No encryption
+#   1 - ``SSL/TLS`` (implicit TLS)
+#   2 - ``STARTTLS`` (explicit TLS)
+snappymail__imap_secure: '{{ 0
+                             if (ansible_local.imapproxy.installed | d(False)
+                                 or snappymail__imap_fqdn == ansible_fqdn
+                                 or snappymail__imap_fqdn == "localhost"
+                                 or snappymail__imap_fqdn == "127.0.0.1"
+                                 or snappymail__imap_fqdn == "::1")
+                             else (2 if snappymail__imap_port == "143"
+                                   else 1) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__imap_short_login [[[
+#
+# Whether the short form (``username``) should be used instead of the long
+# form (``username@domain``) to login to the IMAP server.
+snappymail__imap_short_login: False
+
+                                                                   # ]]]
+# .. envvar:: snappymail__smtp_srv_rr [[[
+#
+# List containing the result of the DNS query for SMTP (submission) ``SRV``
+# resource records in the host's domain.
+snappymail__smtp_srv_rr: '{{ q("debops.debops.dig_srv",
+                               "_submissions._tcp." + snappymail__domain,
+                               ansible_fqdn
+                               if ansible_local.postfix.installed | d(False)
+                               else "smtp." + snappymail__domain, 465) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__smtp_fqdn [[[
+#
+# The FQDN address of the SMTP (submission) server which will be used to send
+# e-mail messages. By default the host is located using DNS SRV resource
+# records; if there are none, the role checks if a local Postfix installation
+# is present and uses the host FQDN as the SMTP (submission) server address.
+# Finally, the fallback ``smtp.<domain>`` is used.
+#
+# Use of a FQDN instead of ``localhost`` is required for X.509 certificate
+# verification and for correct information in system logs.
+snappymail__smtp_fqdn: '{{ snappymail__smtp_srv_rr[0]["target"] }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__smtp_port [[[
+#
+# SMTP port (default is 25 for unencrypted traffic, 587 for STARTTLS and 465
+# for SSL/SMTPS)
+snappymail__smtp_port: '{{ snappymail__smtp_srv_rr[0]["port"] }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__smtp_secure [[[
+#
+# Whether SMTP connections should use TLS, SSL or no encryption.
+# Valid values are:
+#   0 - No encryption
+#   1 - ``SSL/TLS`` (implicit TLS)
+#   2 - ``STARTTLS`` (explicit TLS)
+snappymail__smtp_secure: '{{ 0 if snappymail__smtp_port == "25"
+                             else (1 if snappymail__smtp_port == "465"
+                                   else 2) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__smtp_short_login [[[
+#
+# Whether the short form (``username``) should be used instead of the long
+# form (``username@domain``) to login to the SMTP server.
+snappymail__smtp_short_login: False
+
+                                                                   # ]]]
+# .. envvar:: snappymail__smtp_set_sender [[[
+#
+# Whether the ``Sender`` header should be set with the user login.
+# See :rfc:`822` for details.
+snappymail__smtp_set_sender: True
+
+                                                                   # ]]]
+# .. envvar:: snappymail__sieve_srv_rr [[[
+#
+# List containing the result of the DNS query for Sieve ``SRV`` resource
+# records in the host's domain.
+snappymail__sieve_srv_rr: '{{ q("debops.debops.dig_srv",
+                                "_sieve._tcp." + snappymail__domain,
+                               ansible_fqdn
+                               if ansible_local.dovecot.installed | d(False)
+                               else "sieve." + snappymail__domain, 4190) }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__sieve_fqdn [[[
+#
+# The FQDN address of the Sieve server which allows manageement of the Sieve
+# filter scripts. By default the host is located using DNS SRV resource
+# records; if there are none, the role checks if a local Dovecot installation
+# is present and uses the host FQDN as the Sieve server address. Finally, the
+# fallback ``sieve.<domain>`` is used.
+#
+# Use of a FQDN instead of ``localhost`` is required for X.509 certificate
+# verification and for correct information in system logs.
+snappymail__sieve_fqdn: '{{ snappymail__sieve_srv_rr[0]["target"] }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__sieve_port [[[
+#
+# TCP port used for Sieve connections
+snappymail__sieve_port: '{{ snappymail__sieve_srv_rr[0]["port"] }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__sieve_secure [[[
+#
+# Whether Sieve connections should use TLS, SSL or no encryption.
+# Valid values are:
+#   0 - No encryption
+#   1 - ``SSL/TLS`` (implicit TLS)
+#   2 - ``STARTTLS`` (explicit TLS)
+snappymail__sieve_secure: '{{ 0
+                              if (snappymail__sieve_fqdn == ansible_fqdn
+                                  or snappymail__sieve_fqdn == "localhost"
+                                  or snappymail__sieve_fqdn == "127.0.0.1"
+                                  or snappymail__sieve_fqdn == "::1")
+                              else 2 }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__user_whitelist [[[
+#
+# List of users which are allowed to login, either in short (``user``) or long
+# (``user@domain``) form. An empty whitelist means any user with a valid
+# account can login.
+snappymail__user_whitelist: []
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Main configuration file [[[
+# ---------------------------
+
+# These variables define the contents of the main configuration file
+# (:file:`application.ini`).
+
+# .. envvar:: snappymail__default_configuration [[[
+#
+# The default configuration options defined by the role. Note that the defaults
+# have been carefully crafted (including comments, spelling, etc) to match the
+# upstream configuration file as closely as possible.
+snappymail__default_configuration:
+
+  - section: 'webmail'
+    options:
+
+      - name: 'title'
+        comment: 'Text displayed as page title'
+        value: '{{ snappymail__title }}'
+
+      - name: 'loading_description'
+        comment: 'Text displayed on startup'
+        value: '{{ snappymail__loading }}'
+
+      - name: 'favicon_url'
+        value: '{{ snappymail__favicon }}'
+
+      - name: 'app_path'
+        value: ''
+
+      - name: 'theme'
+        comment: 'Theme used by default'
+        value: '{{ snappymail__default_theme }}'
+
+      - name: 'allow_themes'
+        comment: 'Allow theme selection on settings screen'
+        value: True
+
+      - name: 'allow_user_background'
+        value: True
+
+      - name: 'language'
+        comment: 'Language used by default'
+        value: 'en'
+
+      - name: 'language_admin'
+        comment: 'Admin Panel interface language'
+        value: 'en'
+
+      - name: 'allow_languages_on_settings'
+        comment: 'Allow language selection on settings screen'
+        value: True
+
+      - name: 'allow_additional_accounts'
+        value: True
+
+      - name: 'allow_additional_identities'
+        value: True
+
+      - name: 'messages_per_page'
+        comment: 'Number of messages displayed on page by default'
+        value: 100
+
+      - name: 'message_read_delay'
+        comment: 'Mark message read after N seconds'
+        value: 5
+
+      - name: 'attachment_size_limit'
+        comment: |
+          File size limit (MB) for file upload on compose screen
+          0 for unlimited.
+        value: '{{ snappymail__max_file_size | int }}'
+
+      - name: 'compress_output'
+        comment: |
+          brotli or gzip compress the output.
+          Warning: only enable when server does not do this, else double compression errors occur
+        value: False
+
+  - section: 'interface'
+    options:
+
+      - name: 'show_attachment_thumbnail'
+        value: True
+
+  - section: 'contacts'
+    options:
+
+      - name: 'enable'
+        comment: 'Enable contacts'
+        value: '{{ True
+                   if snappymail__database_map[snappymail__database].cfgopt | d()
+                   else False }}'
+
+      - name: 'allow_sync'
+        value: False
+
+      - name: 'sync_interval'
+        value: 20
+
+      - name: 'type'
+        value: '{{ snappymail__database_map[snappymail__database].cfgopt | d() }}'
+
+      - name: 'pdo_dsn'
+        value: '{{ "host="
+                   + snappymail__database_map[snappymail__database].dbhost | d()
+                   + ";port="
+                   + snappymail__database_map[snappymail__database].dbport | d()
+                   + ";dbname="
+                   + snappymail__database_map[snappymail__database].dbname | d() }}'
+
+      - name: 'pdo_user'
+        value: '{{ snappymail__database_map[snappymail__database].dbuser | d() }}'
+
+      - name: 'pdo_password'
+        value: '{{ snappymail__database_map[snappymail__database].dbpass | d() }}'
+
+      - name: 'mysql_ssl_ca'
+        comment: 'PEM format certificate'
+        value: ''
+
+      - name: 'mysql_ssl_verify'
+        value: True
+
+      - name: 'mysql_ssl_ciphers'
+        comment: 'HIGH'
+        value: ''
+
+      - name: 'suggestions_limit'
+        value: 30
+
+  - section: 'security'
+    options:
+
+      - name: 'custom_server_signature'
+        value: 'SnappyMail'
+
+      - name: 'x_xss_protection_header'
+        value: '1; mode=block'
+
+      - name: 'openpgp'
+        value: False
+
+      - name: 'allow_admin_panel'
+        comment: 'Access settings'
+        value: '{{ snappymail__admin_enabled | d(False) | bool }}'
+
+      - name: 'admin_login'
+        comment: 'Login and password for web admin panel'
+        value: '{{ snappymail__admin_user }}'
+
+      - name: 'admin_password'
+        value: '{{ snappymail__admin_password_hash }}'
+
+      - name: 'admin_totp'
+        value: ''
+
+      - name: 'admin_panel_host'
+        value: ''
+
+      - name: 'admin_panel_key'
+        value: 'admin'
+
+      - name: 'force_https'
+        value: True
+
+      - name: 'hide_x_mailer_header'
+        value: True
+
+      - name: 'max_sys_getloadavg'
+        comment: 'https://en.m.wikipedia.org/wiki/Load_(computing)'
+        value: 0
+
+      - name: 'content_security_policy'
+        comment: 'For example to allow all images use "img-src https:". More info at https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy#directives'
+        value: ''
+
+      - name: 'csp_report'
+        comment: 'Report CSP errors to PHP and/or SnappyMail Log'
+        value: False
+
+      - name: 'encrypt_cipher'
+        comment: 'A valid cipher method from https://php.net/openssl_get_cipher_methods'
+        value: 'aes-256-cbc-hmac-sha1'
+
+      - name: 'cookie_samesite'
+        comment: 'Strict, Lax or None'
+        value: 'Strict'
+
+      - name: 'secfetch_allow'
+        comment: |
+          Additional allowed Sec-Fetch combinations separated by ";".
+          For example:
+          * Allow iframe on same domain in any mode: dest=iframe,site=same-origin
+          * Allow navigate to iframe on same domain: mode=navigate,dest=iframe,site=same-origin
+          * Allow navigate to iframe on (sub)domain: mode=navigate,dest=iframe,site=same-site
+          * Allow navigate to iframe from any domain: mode=navigate,dest=iframe,site=cross-site
+          Default is "site=same-origin;site=none"
+        value: ''
+
+  - section: 'admin_panel'
+    options:
+
+      - name: 'allow_update'
+        value: False
+
+  - section: 'ssl'
+    options:
+
+      - name: 'verify_certificate'
+        comment: 'Require verification of SSL certificate used.'
+        value: False
+
+      - name: 'allow_self_signed'
+        comment: 'Allow self-signed certificates. Requires verify_certificate.'
+        value: True
+
+      - name: 'security_level'
+        comment: 'https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_security_level.html'
+        value: 1
+
+      - name: 'cafile'
+        comment: 'Location of Certificate Authority file on local filesystem (/etc/ssl/certs/ca-certificates.crt)'
+        value: ''
+
+      - name: 'capath'
+        comment: 'capath must be a correctly hashed certificate directory. (/etc/ssl/certs/)'
+        value: ''
+
+      - name: 'local_cert'
+        comment: 'Location of client certificate file (pem format with private key) on local filesystem'
+        value: ''
+
+      - name: 'disable_compression'
+        comment: 'This can help mitigate the CRIME attack vector.'
+        value: True
+
+  - section: 'capa'
+    options:
+
+      - name: 'quota'
+        value: True
+
+      - name: 'dangerous_actions'
+        comment: 'Allow clear folder and delete messages without moving to trash'
+        value: True
+
+      - name: 'attachments_actions'
+        comment: 'Allow download attachments as Zip (and optionally others)'
+        value: True
+
+  - section: 'login'
+    options:
+
+      - name: 'default_domain'
+        comment: |
+          If someone logs in without "@domain.tld", this value will be used
+          When this value is HTTP_HOST, the $_SERVER["HTTP_HOST"] value is used.
+          When this value is SERVER_NAME, the $_SERVER["SERVER_NAME"] value is used.
+          When this value is gethostname, the gethostname() value is used.
+        value: ''
+
+      - name: 'allow_languages_on_login'
+        comment: 'Allow language selection on webmail login screen'
+        value: True
+
+      - name: 'determine_user_language'
+        comment: 'Detect language from browser header `Accept-Language`'
+        value: True
+
+      - name: 'determine_user_domain'
+        comment: 'Like default_domain but then HTTP_HOST/SERVER_NAME without www.'
+        value: False
+
+      - name: 'login_lowercase'
+        value: True
+
+      - name: 'sign_me_auto'
+        comment: |
+          This option allows webmail to remember the logged in user
+          once they closed the browser window.
+
+          Values:
+            "DefaultOff" - can be used, disabled by default;
+            "DefaultOn"  - can be used, enabled by default;
+            "Unused"     - cannot be used
+        value: 'DefaultOff'
+
+  - section: 'plugins'
+    options:
+
+      - name: 'enable'
+        comment: 'Enable plugin support'
+        value: True
+
+      - name: 'enabled_list'
+        comment: 'Comma-separated list of enabled plugins'
+        value: '{{ snappymail__combined_plugins | flatten | selectattr("state", "equalto", "present") | map(attribute="name") | join(",") }}'
+
+  - section: 'defaults'
+    options:
+
+      - name: 'view_editor_type'
+        comment: 'Editor mode used by default (Plain, Html)'
+        value: 'Html'
+
+      - name: 'view_layout'
+        comment: 'layout: 0 - no preview, 1 - side preview, 2 - bottom preview'
+        value: 1
+
+      - name: 'view_use_checkboxes'
+        value: True
+
+      - name: 'view_show_next_message'
+        comment: 'Show next message when (re)move current message'
+        value: True
+
+      - name: 'autologout'
+        value: 30
+
+      - name: 'view_html'
+        value: True
+
+      - name: 'show_images'
+        value: False
+
+      - name: 'view_images'
+        comment: |
+          View external images:
+            "ask" - always ask
+            "match" - whitelist or ask
+            "always" - show always
+        value: 'ask'
+
+      - name: 'contacts_autosave'
+        value: True
+
+      - name: 'mail_use_threads'
+        value: False
+
+      - name: 'allow_draft_autosave'
+        value: True
+
+      - name: 'mail_reply_same_folder'
+        value: False
+
+      - name: 'msg_default_action'
+        comment: '1 - reply, 2 - reply all'
+        value: 1
+
+  - section: 'logs'
+    options:
+
+      - name: 'enable'
+        comment: 'Enable logging'
+        value: False
+
+      - name: 'path'
+        comment: 'Path where log files will be stored'
+        value: ''
+
+      - name: 'level'
+        comment: |
+          Log messages of set RFC 5424 section 6.2.1 Severity level and higher (0 = highest, 7 = lowest).
+          0 = Emergency
+          1 = Alert
+          2 = Critical
+          3 = Error
+          4 = Warning
+          5 = Notice
+          6 = Informational
+          7 = Debug
+        value: 4
+
+      - name: 'hide_passwords'
+        comment: |
+          Required for development purposes only.
+          Disabling this option is not recommended.
+        value: True
+
+      - name: 'time_zone'
+        value: 'UTC'
+
+      - name: 'filename'
+        comment: |
+          Log filename.
+          For security reasons, some characters are removed from filename.
+          Allows for pattern-based folder creation (see examples below).
+
+          Patterns:
+            {date:Y-m-d}  - Replaced by pattern-based date
+                            Detailed info: http://www.php.net/manual/en/function.date.php
+            {user:email}  - Replaced by user's email address
+                            If user is not logged in, value is set to "unknown"
+            {user:login}  - Replaced by user's login (the user part of an email)
+                            If user is not logged in, value is set to "unknown"
+            {user:domain} - Replaced by user's domain name (the domain part of an email)
+                            If user is not logged in, value is set to "unknown"
+            {user:uid}    - Replaced by user's UID regardless of account currently used
+
+            {user:ip}
+            {request:ip}  - Replaced by user's IP address
+
+          Others:
+            {imap:login} {imap:host} {imap:port}
+            {smtp:login} {smtp:host} {smtp:port}
+
+          Examples:
+            filename = "log-{date:Y-m-d}.txt"
+            filename = "{date:Y-m-d}/{user:domain}/{user:email}_{user:uid}.log"
+            filename = "{user:email}-{date:Y-m-d}.txt"
+            filename = "syslog"
+            filename = "stderr"
+        value: 'log-{date:Y-m-d}.txt'
+
+      - name: 'auth_logging'
+        comment: 'Enable auth logging in a separate file (for fail2ban)'
+        value: False
+
+      - name: 'auth_logging_filename'
+        value: 'fail2ban/auth-{date:Y-m-d}.txt'
+
+      - name: 'auth_logging_format'
+        value: '[{date:Y-m-d H:i:s}] Auth failed: ip={request:ip} user={imap:login} host={imap:host} port={imap:port}'
+
+      - name: 'auth_syslog'
+        comment: 'Enable auth logging to syslog for fail2ban'
+        value: False
+
+  - section: 'debug'
+    options:
+
+      - name: 'enable'
+        comment: 'Special option required for development purposes'
+        value: False
+
+      - name: 'javascript'
+        value: False
+
+      - name: 'css'
+        value: False
+
+  - section: 'cache'
+    comment: 'The section controls caching of the entire application.'
+    options:
+
+      - name: 'enable'
+        comment: 'Enables caching in the system'
+        value: False
+
+      - name: 'path'
+        comment: 'Path where cache files will be stored'
+        value: ''
+
+      - name: 'index'
+        comment: 'Additional caching key. If changed, cache is purged'
+        value: 'v1'
+
+      - name: 'fast_cache_driver'
+        comment: 'Can be: files, APCU, memcache, redis (beta)'
+        value: '{{ snappymail__cache_driver }}'
+
+      - name: 'fast_cache_index'
+        comment: 'Additional caching key. If changed, fast cache is purged'
+        value: 'v1'
+
+      - name: 'http'
+        comment: 'Browser-level cache. If enabled, caching is maintainted without using files'
+        value: True
+
+      - name: 'http_expires'
+        comment: 'Browser-level cache time (seconds, Expires header)'
+        value: 3600
+
+      - name: 'server_uids'
+        comment: 'Caching message UIDs when searching and sorting (threading)'
+        value: True
+
+      - name: 'system_data'
+        value: True
+
+  - section: 'imap'
+    options:
+
+      - name: 'use_force_selection'
+        value: False
+
+      - name: 'use_expunge_all_on_delete'
+        value: False
+
+      - name: 'message_list_fast_simple_search'
+        value: True
+
+      - name: 'message_list_permanent_filter'
+        value: ''
+
+      - name: 'message_all_headers'
+        value: False
+
+      - name: 'show_login_alert'
+        value: True
+
+      - name: 'fetch_new_messages'
+        value: True
+
+  - section: 'labs'
+    options:
+
+      - name: 'date_from_headers'
+        comment: 'Display message RFC 2822 date and time header, instead of the arrival internal date.'
+        value: True
+
+      - name: 'allow_message_append'
+        value: False
+
+      - name: 'login_fault_delay'
+        comment: 'When login fails, wait N seconds before responding'
+        value: 1
+
+      - name: 'log_ajax_response_write_limit'
+        value: 300
+
+      - name: 'smtp_show_server_errors'
+        value: False
+
+      - name: 'sieve_auth_plain_initial'
+        value: True
+
+      - name: 'sieve_allow_fileinto_inbox'
+        value: False
+
+      - name: 'mail_func_clear_headers'
+        comment: 'PHP mail() remove To and Subject headers'
+        value: True
+
+      - name: 'mail_func_additional_parameters'
+        comment: 'PHP mail() set -f emailaddress'
+        value: False
+
+      - name: 'folders_spec_limit'
+        value: 50
+
+      - name: 'curl_proxy'
+        value: ''
+
+      - name: 'curl_proxy_auth'
+        value: ''
+
+      - name: 'custom_login_link'
+        value: ''
+
+      - name: 'custom_logout_link'
+        value: ''
+
+      - name: 'http_client_ip_check_proxy'
+        value: False
+
+      - name: 'fast_cache_memcache_host'
+        value: '{{ snappymail__memcached_host }}'
+
+      - name: 'fast_cache_memcache_port'
+        value: '{{ snappymail__memcached_port | int }}'
+
+      - name: 'fast_cache_redis_host'
+        value: '{{ snappymail__redis_url }}'
+
+      # Not used when URL format is used for fast_cache_redis_host
+      - name: 'fast_cache_redis_port'
+        value: 0
+
+      - name: 'use_local_proxy_for_external_images'
+        value: True
+
+      - name: 'image_exif_auto_rotate'
+        value: True
+
+      - name: 'cookie_default_path'
+        value: ''
+
+      - name: 'cookie_default_secure'
+        value: True
+
+      - name: 'replace_env_in_configuration'
+        value: ''
+
+      - name: 'boundary_prefix'
+        value: ''
+
+      - name: 'dev_email'
+        value: ''
+
+      - name: 'dev_password'
+        value: ''
+
+  - section: 'version'
+    options:
+
+      - name: 'current'
+        value: '{{ ansible_local.snappymail["version"] | d("0.0.0") }}'
+
+      - name: 'saved'
+        value: 'Autogenerated by the debops.snappymail role'
+
+                                                                   # ]]]
+# .. envvar:: snappymail_configuration [[[
+#
+# The configuration options defined for all hosts in the Ansible inventory.
+snappymail__configuration: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__group_configuration [[[
+#
+# The configuration options defined for hosts in a specific Ansible inventory
+# group.
+snappymail__group_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__host_configuration [[[
+#
+# The configuration options defined for a specific host in the Ansible
+# inventory.
+snappymail__host_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__combined_configuration: [[[
+#
+# This variable combines the other SnappyMail configuration variables
+# and is used to create the main configuration file.
+snappymail__combined_configuration: '{{ snappymail__default_configuration
+                                        + snappymail__configuration
+                                        + snappymail__group_configuration
+                                        + snappymail__host_configuration }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Domain configuration files [[[
+# ------------------------------
+
+# These variables define the contents of the domain configuration files.
+# See :ref:`snappymail__ref_domains` for more details.
+
+# .. envvar:: snappymail__disabled_domains [[[
+#
+# List of domains which are not allowed (unless explicitly enabled with
+# a corresponding domain configuration file, see
+# :envvar:`snappymail__default_domain_configuration` below). The special
+# value ``*`` corresponds to the :file:`default.json` catchall domain
+# configuration file.
+snappymail__disabled_domains: [ '*' ]
+
+                                                                   # ]]]
+# .. envvar:: snappymail__default_domain_configuration [[[
+#
+# The default domain configuration files. The special name :file:``default``
+# is also supported as a catchall for domain names not specified in any other
+# file.
+snappymail__default_domain_configuration:
+
+  - name: 'default'
+    options:
+
+      - name: 'name'
+        value: '*'
+
+  - name: '{{ snappymail__domain }}'
+    options:
+
+      - name: 'name'
+        value: '{{ snappymail__domain }}'
+
+      - name: 'IMAP'
+        options:
+
+          - name: 'host'
+            value: '{{ snappymail__imap_fqdn }}'
+
+          - name: 'port'
+            value: '{{ snappymail__imap_port | int }}'
+
+          - name: 'type'
+            value: '{{ snappymail__imap_secure | d(0) | int }}'
+
+          - name: 'timeout'
+            value: 300
+
+          - name: 'shortLogin'
+            value: '{{ snappymail__imap_short_login | d(False) | bool }}'
+
+          - name: 'sasl'
+            value:
+              - 'SCRAM-SHA3-512'
+              - 'SCRAM-SHA-512'
+              - 'SCRAM-SHA-256'
+              - 'SCRAM-SHA-1'
+              - 'PLAIN'
+              - 'LOGIN'
+
+          - name: 'ssl'
+            options:
+
+              - name: 'verify_peer'
+                value: False
+
+              - name: 'verify_peer_name'
+                value: False
+
+              - name: 'allow_self_signed'
+                value: True
+
+              - name: 'SNI_enabled'
+                value: True
+
+              - name: 'disable_compression'
+                value: True
+
+              - name: 'security_level'
+                value: 1
+
+          - name: 'disable_list_status'
+            value: False
+
+          - name: 'disable_metadata'
+            value: False
+
+          - name: 'disable_move'
+            value: False
+
+          - name: 'disable_sort'
+            value: False
+
+          - name: 'disable_thread'
+            value: False
+
+          - name: 'disable_binary'
+            value: False
+
+          - name: 'use_expunge_all_on_delete'
+            value: False
+
+          - name: 'fast_simple_search'
+            value: True
+
+          - name: 'force_select'
+            value: False
+
+          - name: 'message_all_headers'
+            value: False
+
+          - name: 'message_list_limit'
+            value: 0
+
+          - name: 'search_filter'
+            value: ''
+
+      - name: 'SMTP'
+        options:
+
+          - name: 'host'
+            value: '{{ snappymail__smtp_fqdn }}'
+
+          - name: 'port'
+            value: '{{ snappymail__smtp_port | int }}'
+
+          - name: 'type'
+            value: '{{ snappymail__smtp_secure | d(0) | int }}'
+
+          - name: 'timeout'
+            value: 60
+
+          - name: 'shortLogin'
+            value: '{{ snappymail__smtp_short_login | d(False) | bool }}'
+
+          - name: 'sasl'
+            value:
+              - 'SCRAM-SHA3-512'
+              - 'SCRAM-SHA-512'
+              - 'SCRAM-SHA-256'
+              - 'SCRAM-SHA-1'
+              - 'PLAIN'
+              - 'LOGIN'
+
+          - name: 'ssl'
+            options:
+
+              - name: 'verify_peer'
+                value: False
+
+              - name: 'verify_peer_name'
+                value: False
+
+              - name: 'allow_self_signed'
+                value: True
+
+              - name: 'SNI_enabled'
+                value: True
+
+              - name: 'disable_compression'
+                value: True
+
+              - name: 'security_level'
+                value: 1
+
+          - name: 'useAuth'
+            value: True
+
+          - name: 'setSender'
+            value: '{{ snappymail__smtp_set_sender | d(True) | bool }}'
+
+          - name: 'usePhpMail'
+            value: False
+
+          - name: 'authPlainLine'
+            value: False
+
+      - name: 'Sieve'
+        options:
+
+          - name: 'host'
+            value: '{{ snappymail__sieve_fqdn }}'
+
+          - name: 'port'
+            value: '{{ snappymail__sieve_port | int }}'
+
+          - name: 'type'
+            value: '{{ snappymail__sieve_secure | d(0) | int }}'
+
+          - name: 'timeout'
+            value: 10
+
+          - name: 'shortLogin'
+            value: False
+
+          - name: 'sasl'
+            value:
+              - 'SCRAM-SHA3-512'
+              - 'SCRAM-SHA-512'
+              - 'SCRAM-SHA-256'
+              - 'SCRAM-SHA-1'
+              - 'PLAIN'
+              - 'LOGIN'
+
+          - name: 'ssl'
+            options:
+
+              - name: 'verify_peer'
+                value: False
+
+              - name: 'verify_peer_name'
+                value: False
+
+              - name: 'allow_self_signed'
+                value: True
+
+              - name: 'SNI_enabled'
+                value: True
+
+              - name: 'disable_compression'
+                value: True
+
+              - name: 'security_level'
+                value: 1
+
+          - name: 'enabled'
+            value: '{{ True
+                       if (snappymail__sieve_fqdn | d() and
+                           snappymail__sieve_port | d())
+                       else False }}'
+
+      - name: 'whiteList'
+        value: '{{ snappymail__user_whitelist | d([]) | flatten | join(" ") }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail_domain_configuration [[[
+#
+# The domains defined for all hosts in the Ansible inventory.
+snappymail__domain_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__group_domain_configuration [[[
+#
+# The domains defined for hosts in a specific Ansible inventory group.
+snappymail__group_domain_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__host_domain_configuration [[[
+#
+# The domains defined for a specific host in the Ansible inventory.
+snappymail__host_domain_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__combined_domain_configuration: [[[
+#
+# This variable combines the other SnappyMail configuration variables
+# and is used to create the domain configuration files.
+snappymail__combined_domain_configuration: '{{ snappymail__default_domain_configuration
+                                               + snappymail__domain_configuration
+                                               + snappymail__group_domain_configuration
+                                               + snappymail__host_domain_configuration }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Plugins [[[
+# -----------
+
+# The variables below contain configuration options for various SnappyMail
+# plugins. See :ref:`snappymail__ref_plugins` for further details.
+
+# .. envvar:: snappymail__plugin_repository [[[
+#
+# Base URL of the plugin repository.
+snappymail__plugin_repo: 'https://snappymail.eu/repository/v2/'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__plugin_json_url [[[
+#
+# URL of the .json list of available plugins in the repository.
+snappymail__plugin_json_url: '{{ snappymail__plugin_repo + "packages.json" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__default_plugins [[[
+#
+# List of plugins configured by the role.
+snappymail__default_plugins:
+
+    # Suggests email addresses found via LDAP
+  - name: 'ldap-contacts-suggestions'
+    state: '{{ "present" if
+               snappymail__ldap_enabled | d(False)
+               else "absent" }}'
+    options:
+
+      - name: 'ldap_uri'
+        value: '{{ snappymail__ldap_uris | join(" ") }}'
+
+      - name: 'use_start_tls'
+        value: '{{ snappymail__ldap_use_tls | d(False) | bool }}'
+
+      - name: 'bind_dn'
+        value: '{{ snappymail__ldap_binddn }}'
+
+      - name: 'bind_password'
+        value: '{{ snappymail__ldap_bindpw }}'
+
+      - name: 'base_dn'
+        comment: |
+          Supported tokens: {email}, {email:user}, {email:domain}, {login},
+          {domain}, {domain:dc}, {imap:login}, {imap:host}, {imap:port}
+        value: '{{ snappymail__ldap_people_dn }}'
+
+      - name: 'object_classes'
+        value: 'inetOrgPerson'
+
+      - name: 'uid_attributes'
+        value: 'uid'
+
+      - name: 'name_attributes'
+        value: 'displayName,cn,givenName,sn'
+
+      - name: 'mail_attributes'
+        value: 'mailAddress,mail,mailAlternateAddress,mailAlias,mailContactAddress'
+
+      - name: 'allowed_emails'
+        value: '*'
+
+    # Allows users to change their LDAP passwords via the webmail UI
+  - name: 'change-password'
+    state: '{{ "present" if
+               snappymail__ldap_enabled | d(False)
+               else "absent" }}'
+    options:
+
+      - name: 'pass_min_length'
+        value: 1
+
+      - name: 'pass_min_strength'
+        value: 0
+
+      - name: 'driver_ldap_enabled'
+        value: True
+
+      - name: 'driver_ldap_allowed_emails'
+        value: '*'
+
+      - name: 'ldap_uri'
+        value: '{{ snappymail__ldap_uris | join(" ") }}'
+
+      - name: 'ldap_use_start_tls'
+        value: '{{ snappymail__ldap_use_tls | d(False) | bool }}'
+
+      - name: 'ldap_user_dn_format'
+        comment: |
+          Supported tokens: {email}, {email:user}, {email:domain}, {login},
+          {domain}, {domain:dc}, {imap:login}, {imap:host}, {imap:port}, {gecos}
+        value: 'uid={email:user},{{ snappymail__ldap_people_dn }}'
+
+      - name: 'ldap_password_field'
+        value: 'userPassword'
+
+      - name: 'ldap_password_enc_type'
+        value: 'SHA'
+
+      - name: 'driver_pdo_enabled'
+        value: False
+
+      - name: 'driver_pdo_allowed_emails'
+        value: '*'
+
+      - name: 'pdo_dsn'
+        value: 'mysql:host=localhost;dbname=snappymail;charset=utf8'
+
+      - name: 'pdo_user'
+        value: ''
+
+      - name: 'pdo_password'
+        value: ''
+
+      - name: 'pdo_sql'
+        value: 'UPDATE table SET password = :newpass WHERE domain = :domain AND username = :username and oldpass = :oldpass'
+
+      - name: 'pdo_encrypt'
+        value: 'none'
+
+      - name: 'pdo_encryptprefix'
+        value: ''
+
+      - name: 'pdo_mysql_ssl'
+        value: False
+
+      - name: 'pdo_mysql_ssl_verify'
+        value: False
+
+      - name: 'pdo_mysql_ssl_ca'
+        value: '/etc/pki/tls/certs/ca-bundle.crt'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__plugins [[[
+#
+# List of plugins configured on all hosts in the Ansible inventory.
+snappymail__plugins: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__group_plugins [[[
+#
+# List of plugins configured on hosts in a specific Ansible inventory group.
+snappymail__group_plugins: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__host_plugins [[[
+#
+# List of plugins configured on specific hosts in the Ansible inventory.
+snappymail__host_plugins: []
+
+                                                                   # ]]]
+# .. envvar:: snappymail__combined_plugins [[[
+#
+# Varlable which combines all plugin lists, used in role tasks and templates.
+snappymail__combined_plugins: '{{ snappymail__default_plugins
+                                  + snappymail__plugins
+                                  + snappymail__group_plugins
+                                  + snappymail__host_plugins }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Role-dependent configuration [[[
+# --------------------------------
+
+# .. envvar:: snappymail__keyring__dependent_gpg_user [[[
+#
+# The UNIX account which will be used to install additional GPG keys by the
+# :ref:`debops.keyring` role.
+snappymail__keyring__dependent_gpg_user: '{{ snappymail__user }}'
+
+                                                                   # ]]]
+# ..
+# .. envvar:: snappymail__keyring__dependent_gpg_keys [[[
+#
+# GPG key configuration for the :ref:`debops.keyring` Ansible role.
+snappymail__keyring__dependent_gpg_keys:
+
+  - user: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    home: '{{ snappymail__home }}'
+    id: '{{ snappymail__gpg_key }}'
+
+  - '{{ snappymail__additional_gpg_keys }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__keyring__dependent_apt_keys [[[
+#
+# APT key configuration for the :ref:`debops.keyring` Ansible role.
+snappymail__keyring__dependent_apt_keys:
+
+  - id: '{{ snappymail__gpg_key }}'
+    repo: '{{ snappymail__apt_repository }}'
+    keyring: '{{ snappymail__apt_keyring }}'
+    state: 'present'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__ldap__dependent_tasks [[[
+#
+# Configuration for the :ref:`debops.ldap` Ansible role.
+snappymail__ldap__dependent_tasks:
+
+  - name: 'Create SnappyMail account for {{ snappymail__ldap_device_dn | join(",") }}'
+    dn: '{{ snappymail__ldap_binddn }}'
+    objectClass: '{{ snappymail__ldap_self_object_classes }}'
+    attributes: '{{ snappymail__ldap_self_attributes }}'
+    no_log: True
+    state: '{{ "present" if snappymail__ldap_enabled and
+                            snappymail__ldap_device_dn | d() else "ignore" }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__nginx__dependent_servers [[[
+#
+# Server configuration managed by the :ref:`debops.nginx` role.
+snappymail__nginx__dependent_servers:
+
+  - name: '{{ snappymail__fqdn }}'
+    filename: 'debops.snappymail'
+    by_role: 'debops.snappymail'
+    type: 'php'
+    root: '{{ snappymail__public_dir }}'
+    webroot_create: False
+    access_policy: '{{ snappymail__nginx_access_policy }}'
+    index: 'index.php'
+
+    options: |
+      autoindex off;
+      client_max_body_size {{ snappymail__max_file_size }}M;
+      client_body_buffer_size 128k;
+
+    location_list:
+      - pattern: '/'
+        options: |
+          try_files $uri $uri/ @snappymail;
+
+      - pattern: '~ ^/?(installer|[A-Z0-9]+$)'
+        options: |
+          deny all;
+
+      - pattern: '~ ^/?(\.git|\.tx|SQL|bin|config|logs|temp|tests|program\/(include|lib|localization|steps))'
+        options: |
+          deny all;
+
+      - pattern: '~ /(README\.md|composer\.json-dist|composer\.json|package\.xml|Dockerfile)$'
+        options: |
+          deny all;
+
+    php_options: |
+      fastcgi_intercept_errors        on;
+      fastcgi_ignore_client_abort     off;
+      fastcgi_connect_timeout         60;
+      fastcgi_send_timeout            180;
+      fastcgi_read_timeout            180;
+      fastcgi_buffer_size             128k;
+      fastcgi_buffers               4 256k;
+      fastcgi_busy_buffers_size       256k;
+      fastcgi_temp_file_write_size    256k;
+
+    php_upstream: 'php_snappymail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__nginx_access_policy [[[
+#
+# Name of the "nginx access policy" for the SnappyMail webpage. See the
+# :ref:`debops.nginx` Ansible role for more details.
+snappymail__nginx_access_policy: ''
+
+                                                                   # ]]]
+# .. envvar:: snappymail__nginx__dependent_upstreams [[[
+#
+# PHP upstream server configuration managed by the :ref:`debops.nginx` role.
+snappymail__nginx__dependent_upstreams:
+
+  - name: 'php_snappymail'
+    by_role: 'debops.snappymail'
+    enabled: True
+    type: 'php'
+    php_pool: 'snappymail'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__php__dependent_packages [[[
+#
+# List of PHP packages to install using the :ref:`debops.php` role.
+snappymail__php__dependent_packages:
+  - '{{ snappymail__php_packages }}'
+
+                                                                   # ]]]
+# .. envvar:: snappymail__php__dependent_pools [[[
+#
+# PHP pools managed by the :ref:`debops.php` role.
+snappymail__php__dependent_pools:
+  name: 'snappymail'
+  by_role: 'debops.snappymail'
+  user: '{{ snappymail__user }}'
+  group: '{{ snappymail__group }}'
+
+  php_values:
+    ## https://secure.php.net/manual/en/info.configuration.php#ini.upload-max-filesize
+    upload_max_filesize:        '{{ snappymail__max_file_size }}M'
+
+    ## https://secure.php.net/manual/en/ini.core.php#ini.post-max-size
+    post_max_size:              '{{ snappymail__max_file_size }}M'
+
+    file_uploads:               'on'
+    mbstring.func_overload:     'off'
+    memory_limit:               '64M'
+    magic_quotes_runtime:       'off'
+    magic_quotes_sybase:        'off'
+    session.auto_start:         'off'
+    suhosin.session.encrypt:    'off'
+
+                                                                   # ]]]
+                                                                   # ]]]
+                                                                   # ]]]

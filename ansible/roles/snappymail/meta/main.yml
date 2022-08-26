@@ -1,0 +1,36 @@
+---
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2023 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+# Ensure that custom Ansible plugins and modules included in the main DebOps
+# collection are available to roles in other collections.
+collections: [ 'debops.debops' ]
+
+dependencies: []
+
+galaxy_info:
+
+  company: 'DebOps'
+  author: 'David Härdeman'
+  description: 'Manage SnappyMail, a web-based IMAP client written in PHP, forked from RainLoop'
+  license: 'GPL-3.0-only'
+  min_ansible_version: '2.9.0'
+
+  platforms:
+
+    - name: 'Ubuntu'
+      versions: [ 'all' ]
+
+    - name: 'Debian'
+      versions: [ 'all' ]
+
+  galaxy_tags:
+    - debops
+    - email
+    - mail
+    - imap
+    - web
+    - sieve
+    - snappymail
+    - rainloop

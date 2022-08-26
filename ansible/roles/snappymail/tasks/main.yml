@@ -1,0 +1,336 @@
+---
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2023 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+- name: Import custom Ansible plugins
+  ansible.builtin.import_role:
+    name: 'ansible_plugins'
+
+- name: Import DebOps global handlers
+  ansible.builtin.import_role:
+    name: 'global_handlers'
+
+- name: Import DebOps secret role
+  ansible.builtin.import_role:
+    name: 'secret'
+
+- name: Install pre-requisite packages for SnappyMail
+  ansible.builtin.package:
+    name: '{{ q("flattened", (snappymail__base_packages
+                              + snappymail__packages)) }}'
+    state: 'present'
+  register: snappymail__register_packages
+  until: snappymail__register_packages is succeeded
+  tags: [ 'role::snappymail:pkg' ]
+
+- name: Ensure that the SnappyMail group is present
+  ansible.builtin.group:
+    name: '{{ snappymail__group }}'
+    system: True
+    state: 'present'
+  tags: [ 'role::snappymail:deployment' ]
+
+- name: Ensure that the SnappyMail user is present
+  ansible.builtin.user:
+    name: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    home: '{{ snappymail__home }}'
+    shell: '{{ snappymail__shell }}'
+    comment: '{{ snappymail__comment }}'
+    system: True
+    state: 'present'
+  tags: [ 'role::snappymail:deployment' ]
+
+- name: Create directory hierarchy
+  ansible.builtin.file:
+    path: '{{ item.path }}'
+    state: 'directory'
+    owner: '{{ item.owner | d(snappymail__user) }}'
+    group: '{{ item.group | d(snappymail__user) }}'
+    mode: '{{ item.mode | d("0750") }}'
+  loop:
+    - { path: '{{ snappymail__base_dir }}',
+        owner: 'root', group: 'root', mode: '0755' }
+    - { path: '{{ snappymail__archive_dir }}' }
+    - { path: '{{ snappymail__data_dir }}' }
+    - { path: '{{ snappymail__domains_dir }}' }
+    - { path: '{{ snappymail__configs_dir }}' }
+    - { path: '{{ snappymail__plugins_dir }}' }
+  loop_control:
+    label: '{{ item.path }}'
+  tags: [ 'role::snappymail:deployment' ]
+
+- name: Create symlinks
+  ansible.builtin.file:
+    src: '{{ item.src }}'
+    dest: '{{ item.dest }}'
+    owner: 'root'
+    group: 'root'
+    state: 'link'
+  loop:
+    - { src: '{{ snappymail__installed_dir }}',
+        dest: '{{ snappymail__public_dir }}' }
+    - { src: '/var/lib/snappymail/VERSION',
+        dest: '{{ snappymail__data_dir + "/VERSION" }}' }
+  tags: [ 'role::snappymail:deployment' ]
+
+- name: Divert original include.php
+  debops.debops.dpkg_divert:
+    path: '/usr/share/snappymail/include.php'
+
+- name: Generate custom include.php
+  ansible.builtin.template:
+    src: 'srv/www/sites/snappymail/public/include.php.j2'
+    dest: '{{ snappymail__public_dir + "/include.php" }}'
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+  tags: [ 'role::snappymail:config' ]
+
+- name: Make sure that Ansible local facts directory exists
+  ansible.builtin.file:
+    path: '/etc/ansible/facts.d'
+    state: 'directory'
+    mode: '0755'
+
+- name: Save SnappyMail local facts
+  ansible.builtin.template:
+    src: 'etc/ansible/facts.d/snappymail.fact.j2'
+    dest: '/etc/ansible/facts.d/snappymail.fact'
+    mode: '0755'
+  notify: [ 'Refresh host facts' ]
+
+- name: Update Ansible facts if they were modified
+  ansible.builtin.meta: 'flush_handlers'
+
+- name: Fetch stored timestamp for the main configuration file
+  ansible.builtin.slurp:
+    src: '{{ snappymail__configs_dir + "/application.ini.debops-timestamp" }}'
+  register: snappymail__register_stored_timestamp
+  ignore_errors: True
+  changed_when: False
+  tags: [ 'role::snappymail:config' ]
+
+- name: Prepare main configuration update using the stored timestamp
+  ansible.builtin.set_fact:
+    snappymail__register_configuration_timestamp:
+      - section: 'version'
+        options:
+          - name: 'saved'
+            value: '{{ snappymail__register_stored_timestamp["content"] | b64decode | trim }}'
+  when: snappymail__register_stored_timestamp is succeeded
+  tags: [ 'role::snappymail:config' ]
+
+- name: Generate the main configuration file using the stored timestamp
+  ansible.builtin.template:
+    src: 'srv/www/sites/snappymail/data/_data_/_default_/configs/application.ini.j2'
+    dest: '{{ snappymail__configs_dir + "/application.ini" }}'
+    owner: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    mode: '0600'
+    force: '{{ snappymail__overwrite_configuration | d(False) | bool }}'
+  vars:
+    snappymail__var_configuration: '{{ snappymail__combined_configuration
+                                       + snappymail__register_configuration_timestamp }}'
+  register: snappymail__register_cfg_gen_old
+  when: snappymail__register_stored_timestamp is succeeded
+  tags: [ 'role::snappymail:config' ]
+
+- name: Generate a new timestamp for the main configuration file
+  ansible.builtin.set_fact:
+    snappymail__register_cfg_timestamp: '{{ lookup("pipe", "date -R") }}'
+  when: snappymail__register_cfg_gen_old.changed | d(False) or
+        snappymail__register_stored_timestamp is failed
+  tags: [ 'role::snappymail:config' ]
+
+- name: Prepare main configuration update using the new timestamp
+  ansible.builtin.set_fact:
+    snappymail__register_configuration_timestamp:
+      - section: 'version'
+        options:
+          - name: 'saved'
+            value: '{{ snappymail__register_cfg_timestamp }}'
+  when: snappymail__register_cfg_gen_old.changed | d(False) or
+        snappymail__register_stored_timestamp is failed
+  tags: [ 'role::snappymail:config' ]
+
+- name: Store the new timestamp for the main configuration file
+  ansible.builtin.copy:
+    dest: '{{ snappymail__configs_dir + "/application.ini.debops-timestamp" }}'
+    content: '{{ snappymail__register_cfg_timestamp }}'
+    owner: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    mode: '0600'
+  when: snappymail__register_cfg_gen_old.changed | d(False) or
+        snappymail__register_stored_timestamp is failed
+  tags: [ 'role::snappymail:config' ]
+
+- name: Generate the main configuration file using the new timestamp
+  ansible.builtin.template:
+    src: 'srv/www/sites/snappymail/data/_data_/_default_/configs/application.ini.j2'
+    dest: '{{ snappymail__configs_dir + "/application.ini" }}'
+    owner: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    mode: '0600'
+    force: '{{ snappymail__overwrite_configuration | d(False) | bool }}'
+  vars:
+    snappymail__var_configuration: '{{ snappymail__combined_configuration
+                                       + snappymail__register_configuration_timestamp }}'
+  when: snappymail__register_cfg_gen_old.changed | d(False) or
+        snappymail__register_stored_timestamp is failed
+  tags: [ 'role::snappymail:config' ]
+
+- name: Generate the domain configuration file(s)
+  ansible.builtin.template:
+    src: 'srv/www/sites/snappymail/data/_data_/_default_/domains/domain.json.j2'
+    dest: '{{ snappymail__domains_dir + "/" + item.name + ".json" }}'
+    owner: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    mode: '0640'
+    force: '{{ snappymail__overwrite_configuration | d(False) | bool }}'
+  loop: '{{ snappymail__combined_domain_configuration
+            | debops.debops.parse_kv_items() }}'
+  loop_control:
+    label: '{{ item.name }}'
+  when: item.state | d("present") == "present"
+  tags: [ 'role::snappymail:config' ]
+
+- name: Generate disabled domains configuration
+  ansible.builtin.template:
+    src: 'srv/www/sites/snappymail/data/_data_/_default_/domains/disabled.j2'
+    dest: '{{ snappymail__domains_dir + "/disabled" }}'
+    owner: '{{ snappymail__user }}'
+    group: '{{ snappymail__group }}'
+    mode: '0640'
+    force: '{{ snappymail__overwrite_configuration | d(False) | bool }}'
+  tags: [ 'role::snappymail:config' ]
+
+- name: Remove domain configuration file(s)
+  ansible.builtin.file:
+    dest: '{{ snappymail__domains_dir + "/" + item.name + ".json" }}'
+    state: 'absent'
+  loop: '{{ snappymail__combined_domain_configuration | selectattr("file", "defined") }}'
+  loop_control:
+    label: '{{ item.file }}'
+  when: item.state | d("present") == "absent"
+  tags: [ 'role::snappymail:config' ]
+
+- name: Get plugin list
+  ansible.builtin.uri:
+    url: '{{ snappymail__plugin_json_url }}'
+  register: snappymail__register_plugin_json
+  tags: [ 'role::snappymail:deployment', 'role::snappymail:plugins' ]
+
+- name: Prepare a dict of available plugins
+  ansible.builtin.set_fact:
+    snappymail__available_plugins: '{{ snappymail__available_plugins | d({})
+                                       | combine({ item.id: item }) }}'
+  loop: '{{ snappymail__register_plugin_json.json }}'
+  loop_control:
+    label: '{{ item.id + " " + item.version | d("0.0") }}'
+  tags: [ 'role::snappymail:deployment', 'role::snappymail:plugins' ]
+
+- name: Prepare a list of plugins defined in the Ansible inventory
+  ansible.builtin.set_fact:
+    snappymail__register_plugins: '{{
+      snappymail__register_plugins | d([]) +
+      [ item | combine({
+          "remote_url": item.remote_url
+            | d((snappymail__plugin_repo
+                 + snappymail__available_plugins[item.name].file)
+                if (snappymail__available_plugins[item.name].name | d())
+                else omit),
+
+          "remote_signature": item.remote_signature
+            | d((snappymail__plugin_repo
+                 + snappymail__available_plugins[item.name].file + ".asc")
+                if (snappymail__available_plugins[item.name].name | d())
+                else omit),
+
+          "remote_version": item.remote_version
+            | d(snappymail__available_plugins[item.name].version | d(omit)),
+
+          "local_filename": item.local_filename
+            | d(item.name + "-"
+                + snappymail__available_plugins[item.name].version | d("0")
+                + ".tar.gz"),
+
+          "local_signature": item.local_signature
+            | d(item.name + "-"
+                + snappymail__available_plugins[item.name].version | d("0")
+                + ".tar.gz.asc"),
+
+          "plugin_dir": item.plugin_dir
+            | d(snappymail__plugins_dir + "/" + item.name)
+      })]
+    }}'
+  loop: '{{ snappymail__combined_plugins | debops.debops.parse_kv_items() }}'
+  loop_control:
+    label: '{{ item.name }}'
+  when: item.state | d("present") == "present"
+  tags: [ 'role::snappymail:deployment', 'role::snappymail:plugins' ]
+
+- name: Install plugins
+  ansible.builtin.include_tasks: install_plugin.yml
+  loop: '{{ snappymail__register_plugins | selectattr("remote_url", "defined") }}'
+  loop_control:
+    label: '{{ snappymail__plugin.name }}'
+    loop_var: 'snappymail__plugin'
+  tags: [ 'role::snappymail:plugins' ]
+
+- name: Find old plugin archives to delete
+  ansible.builtin.find:
+    paths: '{{ snappymail__archive_dir }}'
+    file_type: 'any'
+    excludes: '{{ snappymail__register_plugins
+                    | selectattr("state", "eq", "present")
+                    | map(attribute="local_filename") | list
+                  + snappymail__register_plugins
+                    | selectattr("state", "eq", "present")
+                    | map(attribute="local_signature") | list }}'
+  register: snappymail__old_archives
+  tags: [ 'role::snappymail:deployment' ]
+
+- name: Delete old plugin archives
+  ansible.builtin.file:
+    path: '{{ item.path }}'
+    state: 'absent'
+  loop: '{{ snappymail__old_archives["files"] }}'
+  loop_control:
+    label: '{{ item.path }}'
+  tags: [ 'role::snappymail:deployment' ]
+
+- name: Install backup script
+  ansible.builtin.copy:
+    src: 'usr/local/sbin/'
+    dest: '/usr/local/sbin/'
+    mode: '0755'
+  tags: [ 'role::snappymail:backups' ]
+
+- name: Install backup configuration file
+  ansible.builtin.template:
+    src: 'etc/default/debops-snappymail-sqlite-snapshot.j2'
+    dest: '/etc/default/debops-snappymail-sqlite-snapshot'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  tags: [ 'role::snappymail:backups' ]
+
+- name: Configure backup snapshots as cron jobs
+  ansible.builtin.cron:
+    name: 'Create {{ item }} backup snapshots of Snappymail SQLite databases'
+    special_time: '{{ item }}'
+    cron_file: 'snappymail-snapshot'
+    user: 'root'
+    state: '{{ snappymail__snapshot_deploy_state
+               if (item in snappymail__snapshot_cron_jobs)
+               else "absent" }}'
+    job: '/usr/local/sbin/debops-snappymail-sqlite-snapshot {{ item }}'
+  loop: [ 'daily', 'weekly', 'monthly' ]
+  loop_control:
+    label: '{{ {"state": (snappymail__snapshot_deploy_state
+                          if (item in snappymail__snapshot_cron_jobs)
+                          else "absent"),
+                "cron_job": item} }}'
+  tags: [ 'role::snappymail:backups' ]

@@ -63,6 +63,9 @@
 - name: Configure Roundcube application
   import_playbook: '../service/roundcube.yml'
 
+- name: Configure SnappyMail application
+  import_playbook: '../service/snappymail.yml'
+
 - name: Configure IMAP Proxy service
   import_playbook: '../service/imapproxy.yml'
 

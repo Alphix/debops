@@ -1,0 +1,14 @@
+{#
+ # Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2023 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+# {{ ansible_managed }}
+#
+# Configuration file for debops-snappymail-sqlite-snapshot
+
+# Path to the SQLite database
+SQLITE_DB="{{ snappymail__data_default_dir + '/AddressBook.sqlite' }}"
+
+# Database timeout in milliseconds
+SQLITE_TIMEOUT="{{ snappymail__snapshot_timeout }}"
