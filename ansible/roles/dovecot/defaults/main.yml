@@ -1218,6 +1218,18 @@ dovecot__ldap_user_filter: '(&
                             )'
 
                                                                    # ]]]
+# .. envvar:: dovecot__ldap_iterate_filter [[[
+#
+# The LDAP filter used to look up all user accounts in the directory.
+dovecot__ldap_iterate_filter: '(&
+                                 (objectClass=mailRecipient)
+                                 (|
+                                   (authorizedService=all)
+                                   (authorizedService=mail:access)
+                                 )
+                               )'
+
+                                                                   # ]]]
 # .. envvar:: dovecot__ldap_quota_attribute [[[
 #
 # The LDAP attribute storing the user quota.
