@@ -1,5 +1,6 @@
 {# Copyright (C) 2016-2017 Maciej Delmanowski <drybjed@gmail.com>
- # Copyright (C) 2016-2017 DebOps <https://debops.org/>
+ # Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2016-2022 DebOps <https://debops.org/>
  # SPDX-License-Identifier: GPL-3.0-only
  #}
 # {{ ansible_managed }}
@@ -24,20 +25,25 @@
 # * *  *  *  *  user-name  command to be executed
 {% for element in cron__crontab_combined_jobs | debops.debops.parse_kv_config %}
 {%   if element.name | d() and element.job | d() and element.state | d('present') not in [ 'absent', 'ignore', 'init' ] %}
+{%     if element.state | d('present') == 'comment' %}
+{%       set prefix = "#" %}
+{%     else %}
+{%       set prefix = "" %}
+{%     endif %}
 {%     if element.special_time | d() %}
 {%       if element.special_time in [ 'reboot', 'yearly', 'annually', 'monthly', 'weekly', 'daily', 'midnight', 'hourly' ] %}
-{{ '{:<15} {}\t{}'.format(
-    ('@' + element.special_time),
-    element.user | d('root'),
-    element.job) }}
+{%         set special_time = '@' + element.special_time %}
 {%       else %}
-{{ '{:<15} {}\t{}'.format(
-    element.special_time,
+{%         set special_time = element.special_time %}
+{%       endif %}
+{{ '{}{:<15} {}\t{}'.format(
+    prefix,
+    special_time,
     element.user | d('root'),
     element.job) }}
-{%       endif %}
 {%     else %}
-{{ '{:<2}  {:<2} {:<2} {:<2} {:<2} {}\t{}'.format(
+{{ '{}{:<2}  {:<2} {:<2} {:<2} {:<2} {}\t{}'.format(
+    prefix,
     element.minute  | d('*'),
     element.hour    | d('*'),
     element.day     | d('*'),
