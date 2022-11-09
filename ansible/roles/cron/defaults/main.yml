@@ -34,7 +34,11 @@ cron__enabled: True
 #
 # - cron
 # - systemd-cron
-cron__daemon: 'cron'
+cron__daemon: '{{ ansible_local.cron.daemon
+                  if (ansible_local.cron.daemon | d())
+                  else ("cron"
+                        if (ansible_local.cron.installed | d(False))
+                        else "cron") }}'
 
                                                                    # ]]]
 # .. envvar:: cron__base_packages [[[
