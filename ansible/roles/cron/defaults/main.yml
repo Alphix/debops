@@ -2,7 +2,8 @@
 # .. vim: foldmarker=[[[,]]]:foldmethod=marker
 
 # .. Copyright (C) 2016-2017 Maciej Delmanowski <drybjed@gmail.com>
-# .. Copyright (C) 2016-2017 DebOps <https://debops.org/>
+# .. Copyright (C) 2022 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2016-2022 DebOps <https://debops.org/>
 # .. SPDX-License-Identifier: GPL-3.0-only
 
 # .. _cron__ref_defaults:
@@ -25,16 +26,38 @@
 cron__enabled: True
 
                                                                    # ]]]
+# .. envvar:: cron__daemon [[[
+#
+# Which cron daemon should be installed?
+#
+# Choices (string):
+#
+# - cron
+# - systemd-cron
+cron__daemon: 'cron'
+
+                                                                   # ]]]
 # .. envvar:: cron__base_packages [[[
 #
 # List of APT packages to install for :program:`cron` support.
-cron__base_packages: [ 'cron' ]
+cron__base_packages:
+  - '{{ "cron" if (cron__daemon == "cron") else [] }}'
+  - '{{ "systemd-cron" if (cron__daemon == "systemd-cron") else [] }}'
 
                                                                    # ]]]
 # .. envvar:: cron__packages [[[
 #
 # List of additional APT packages to install with :program:`cron`.
 cron__packages: []
+
+                                                                   # ]]]
+# .. envvar:: cron__purge_packages [[[
+#
+# List of packages to purge to avoid issues with conflicting daemons.
+cron__purge_packages:
+  - '{{ "cron" if (cron__daemon != "cron") else [] }}'
+  - '{{ "systemd-cron" if (cron__daemon != "systemd-cron") else [] }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # Configuration of the periodic system jobs [[[
@@ -156,6 +179,7 @@ cron__crontab_default_jobs:
                                      | random(seed=cron__crontab_offset_seeds[0])))) }}'
     user: 'root'
     job: 'cd / && run-parts --report /etc/cron.hourly'
+    state: '{{ "comment" if (cron__daemon == "systemd-cron") else "present" }}'
 
   - name: 'crontab-daily'
     minute: '{{ 59 | random(seed=(cron__crontab_seed
@@ -166,6 +190,7 @@ cron__crontab_default_jobs:
                                                     | random(seed=cron__crontab_offset_seeds[2])))) }}'
     user: 'root'
     job: 'test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )'
+    state: '{{ "comment" if (cron__daemon == "systemd-cron") else "present" }}'
 
   - name: 'crontab-weekly'
     minute: '{{ 59 | random(seed=(cron__crontab_seed
@@ -180,6 +205,7 @@ cron__crontab_default_jobs:
                                    | random(seed=cron__crontab_offset_seeds[5])))) }}'
     user: 'root'
     job: 'test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.weekly )'
+    state: '{{ "comment" if (cron__daemon == "systemd-cron") else "present" }}'
 
   - name: 'crontab-monthly'
     minute: '{{ 59 | random(seed=(cron__crontab_seed
@@ -195,6 +221,7 @@ cron__crontab_default_jobs:
                                | random(seed=cron__crontab_offset_seeds[8])))) }}'
     user: 'root'
     job: 'test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.monthly )'
+    state: '{{ "comment" if (cron__daemon == "systemd-cron") else "present" }}'
 
                                                                    # ]]]
 # .. envvar:: cron__crontab_jobs [[[
