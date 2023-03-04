@@ -34,9 +34,8 @@
     name: '{{ q("flattened", (mariadb_server__base_packages
                               + mariadb_server__packages_map[mariadb_server__flavor]
                               + mariadb_server__packages
-                              + (["automysqlbackup"]
-                                 if mariadb_server__backup | bool
-                                 else []))) }}'
+                              + (["automysqlbackup"] if mariadb_server__backup | bool else [])
+                              + (["mariadb-plugin-gssapi-server"] if mariadb_server__kerberos | bool else []))) }}'
     state: 'present'
   register: mariadb_server__register_install_status
   until: mariadb_server__register_install_status is succeeded

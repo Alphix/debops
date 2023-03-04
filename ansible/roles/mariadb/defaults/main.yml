@@ -42,6 +42,14 @@ mariadb__port: '3306'
 mariadb__client: '{{ ansible_fqdn }}'
 
                                                                    # ]]]
+# .. envvar:: mariadb__kerberos [[[
+#
+# Whether client support for Kerberos should be enabled. Note that this *only*
+# covers the client side. The server also needs to be configured to support
+# Kerberos.
+mariadb__kerberos: '{{ ansible_local.kerberos.enabled | d(False) }}'
+
+                                                                   # ]]]
 # .. envvar:: mariadb__delegate_to [[[
 #
 # When the MariaDB server is used remotely, Ansible needs to run tasks on the
@@ -142,7 +150,8 @@ mariadb__upstream_mirror: 'http://nyc2.mirrors.digitalocean.com/mariadb/repo/{{ 
 #
 # List of APT packages that should be installed with any database engine
 # selected.
-mariadb__base_packages: []
+mariadb__base_packages:
+  - '{{ "mariadb-plugin-gssapi-client" if mariadb__kerberos | bool else [] }}'
 
                                                                    # ]]]
 # .. envvar:: mariadb__packages [[[

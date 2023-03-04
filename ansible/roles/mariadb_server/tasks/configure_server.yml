@@ -20,6 +20,15 @@
     mode: '0644'
   when: mariadb_server__backup | d()
 
+- name: Configure Kerberos support
+  ansible.builtin.template:
+    src: 'etc/mysql/mariadb.conf.d/auth_gssapi_keytab_path.cnf.j2'
+    dest: '/etc/mysql/mariadb.conf.d/auth_gssapi_keytab_path.cnf'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  when: mariadb_server__kerberos | d(False)
+
 - name: Enable events table backup in mysqldump
   community.general.ini_file:
     dest:    '/etc/mysql/debian.cnf'

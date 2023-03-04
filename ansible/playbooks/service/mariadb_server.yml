@@ -1,6 +1,6 @@
 ---
 # Copyright (C) 2015-2016 Maciej Delmanowski <drybjed@gmail.com>
-# Copyright (C) 2015-2017 DebOps <https://debops.org/>
+# Copyright (C) 2015-2023 DebOps <https://debops.org/>
 # SPDX-License-Identifier: GPL-3.0-only
 
 - name: Manage MariaDB server
@@ -42,5 +42,16 @@
       python__dependent_packages2:
         - '{{ mariadb_server__python__dependent_packages2 }}'
 
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+      ldap__dependent_tasks:
+        - '{{ mariadb_server__ldap__dependent_tasks }}'
+
     - role: mariadb_server
       tags: [ 'role::mariadb_server', 'skip::mariadb_server' ]
+
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__dependent_tasks:
+        - '{{ mariadb_server__kerberos__dependent_tasks }}'
+
