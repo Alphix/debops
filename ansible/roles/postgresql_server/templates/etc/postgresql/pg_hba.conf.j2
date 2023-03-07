@@ -83,6 +83,8 @@
 {%       endif %}
 {%       if (entry.type in [ 'hostssl' ] and (item.ssl is undefined or not item.ssl) and not postgresql_server__pki | bool) %}
 # SSL not available, hostssl entry disabled
+{%       elif (entry.type in [ 'hostgssenc' ] and not postgresql_server__kerberos | bool) %}
+# Kerberos not available, hostgssenc entry disabled
 {%       else %}
 {%         for address in entry_tpl_address %}
 {{ "%-10s %-15s %-15s %-28s %s%s" | format(entry.type, entry_tpl_database | join(","), entry_tpl_user | join(","), address, entry.method, ((" " + entry_tpl_options | join(" ")) if entry_tpl_options else "")) }}

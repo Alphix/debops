@@ -42,5 +42,15 @@
       locales__dependent_list:
         - '{{ postgresql_server__locales__dependent_list }}'
 
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+      ldap__dependent_tasks:
+        - '{{ postgresql_server__ldap__dependent_tasks }}'
+
     - role: postgresql_server
       tags: [ 'role::postgresql_server', 'skip::postgresql_server' ]
+
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__dependent_tasks:
+        - '{{ postgresql_server__kerberos__dependent_tasks }}'

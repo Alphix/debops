@@ -2,7 +2,8 @@
 # .. vim: foldmarker=[[[,]]]:foldmethod=marker
 
 # .. Copyright (C) 2015-2017 Maciej Delmanowski <drybjed@gmail.com>
-# .. Copyright (C) 2015-2017 DebOps <https://debops.org/>
+# .. Copyright (C) 2015-2023 DebOps <https://debops.org/>
+# .. Copyright (C) 2023 David Härdeman <david@hardeman.nu>
 # .. SPDX-License-Identifier: GPL-3.0-only
 
 # .. _postgresql_server__ref_defaults:
@@ -94,6 +95,27 @@ postgresql_server__delegate_to: '{{ inventory_hostname }}'
 # :file:`/var/log/postgresql/` directory; it can also cause rapid increase of
 # log file size.
 postgresql_server__pgbadger_logs: False
+
+                                                                   # ]]]
+# .. envvar:: postgresql_server__kerberos [[[
+#
+# Enable Kerberos support.
+postgresql_server__kerberos: '{{ ansible_local.kerberos.enabled | d(False) }}'
+
+                                                                   # ]]]
+# .. envvar:: postgresql_server__kerberos_realm [[[
+#
+# The Kerberos realm to use.
+postgresql_server__kerberos_realm: '{{ ansible_local.kerberos.default_realm
+                                       | d(ansible_domain) | upper }}'
+
+                                                                   # ]]]
+# .. envvar:: postgresql_server__kerberos_princ [[[
+#
+# The Kerberos principal to use.
+postgresql_server__kerberos_princ: '{{ "postgres/" + ansible_fqdn + "@"
+                                       + (postgresql_server__kerberos_realm | upper) }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # Network connections, firewall [[[
@@ -259,6 +281,51 @@ postgresql_server__pki_crl: 'default.crl'
 postgresql_server__ssl_ciphers: 'ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH'
                                                                    # ]]]
                                                                    # ]]]
+# LDAP environment [[[
+# --------------------
+
+# .. envvar:: postgresql_server__ldap_device_dn [[[
+#
+# The Distinguished Name of the current host LDAP object, defined as a YAML
+# list. It will be used as a base for the PostgreSQL service account LDAP
+# object.  If the list is empty, the role will not create the account LDAP
+# object automatically.
+postgresql_server__ldap_device_dn: '{{ ansible_local.ldap.device_dn | d([]) }}'
+
+                                                                   # ]]]
+# .. envvar:: postgresql_server__ldap_self_rdn [[[
+#
+# The Relative Distinguished Name of the account LDAP object used by the
+# PostgreSQL service.
+postgresql_server__ldap_self_rdn: 'uid=postgres'
+
+                                                                   # ]]]
+# .. envvar:: postgresql_server__ldap_self_object_classes [[[
+#
+# List of the LDAP object classes which will be used to create the LDAP object
+# used by the PostgreSQL service.
+postgresql_server__ldap_self_object_classes: [ 'account', 'krbPrincipalAux' ]
+
+                                                                   # ]]]
+# .. envvar:: postgresql_server__ldap_self_attributes [[[
+#
+# YAML dictionary that defines the attributes of the LDAP object used by the
+# PostgreSQL service.
+postgresql_server__ldap_self_attributes:
+  uid: '{{ postgresql_server__ldap_self_rdn.split("=")[1] }}'
+  host: '{{ [ ansible_fqdn, ansible_hostname ] | unique }}'
+  description: 'Account used by the "PostgreSQL" service to store its Kerberos principal'
+
+                                                                   # ]]]
+# .. envvar:: postgresql_server__ldap_self_dn [[[
+#
+# The Distinguished Name of the account LDAP object used by the PostgreSQL
+# service.
+postgresql_server__ldap_self_dn: '{{ ([ postgresql_server__ldap_self_rdn ]
+                                      + postgresql_server__ldap_device_dn) | join(",") }}'
+
+                                                                    # ]]]
+                                                                    # ]]]
 # Global cluster resources [[[
 # ----------------------------
 
@@ -288,6 +355,7 @@ postgresql_server__wal_level: 'minimal'
 #
 # Command executed by ``postgres`` user when WAL mode is set to ``archive``.
 postgresql_server__archive_command: ''
+
                                                                    # ]]]
                                                                    # ]]]
 # Host Based Authentication configuration [[[
@@ -367,31 +435,17 @@ postgresql_server__hba_trusted:
 # Host Based Authentication - connections from ``localhost``.
 postgresql_server__hba_local:
 
-  - comment:  'Access through local UNIX socket with password'
+  - comment:  'Access via a local UNIX socket using a password'
     type:     'local'
     database: 'samerole'
     user:     'all'
     method:   'md5'
 
-  - comment:  'Access from localhost over IPv6'
+  - comment:  'Access from localhost using a password'
     type:     'host'
     database: 'samerole'
     user:     'all'
-    address:  '::1/128'
-    method:   'md5'
-
-  - comment:  'Access from localhost over IPv4'
-    type:     'host'
-    database: 'samerole'
-    user:     'all'
-    address:  '127.0.0.1/32'
-    method:   'md5'
-
-  - comment:  'Access from localhost'
-    type:     'host'
-    database: 'samerole'
-    user:     'all'
-    address:  'localhost'
+    address:  'samehost'
     method:   'md5'
 
                                                                    # ]]]
@@ -400,12 +454,21 @@ postgresql_server__hba_local:
 # Host Based Authentication - remote connections.
 postgresql_server__hba_remote:
 
-  - comment:  'Remote connections from local networks'
+  - comment:  'Access from local networks using GSSAPI/Kerberos'
+    type:     'hostgssenc'
+    database: 'samerole'
+    user:     'all'
+    address:  'samenet'
+    method:   'gss'
+    options:  'include_realm=0 krb_realm={{ postgresql_server__kerberos_realm }}'
+
+  - comment:  'Access from local networks using a password'
     type:     'hostssl'
     database: 'samerole'
     user:     'all'
     address:  'samenet'
     method:   'md5'
+
                                                                    # ]]]
                                                                    # ]]]
 # Ident map configuration [[[
@@ -434,6 +497,7 @@ postgresql_server__ident_trusted: []
 #
 # UNIX account to PostgreSQL role mapping - 'local' map.
 postgresql_server__ident_local: []
+
                                                                    # ]]]
                                                                    # ]]]
 # PostgreSQL cluster configuration [[[
@@ -469,6 +533,9 @@ postgresql_server__clusters: [ '{{ postgresql_server__cluster_main }}' ]
 postgresql_server__cluster_main:
   name: 'main'
   port: '5432'
+  krb_server_keyfile: '{{ "/etc/krb5.keytab.d/postgresql.keytab"
+                          if postgresql_server__kerberos | bool else "" }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # AutoPostgreSQLBackup configuration [[[
@@ -708,5 +775,30 @@ postgresql_server__python__dependent_packages2:
 
   - 'python-psycopg2'
 
+# .. envvar:: postgresql_server__ldap__dependent_tasks [[[
+#
+# Configuration for the :ref:`debops.ldap` Ansible role.
+postgresql_server__ldap__dependent_tasks:
+
+  - name: 'Create postgres account for {{ postgresql_server__ldap_device_dn | join(",") }}'
+    dn: '{{ postgresql_server__ldap_self_dn }}'
+    objectClass: '{{ postgresql_server__ldap_self_object_classes }}'
+    attributes: '{{ postgresql_server__ldap_self_attributes }}'
+    state: '{{ "present" if postgresql_server__ldap_device_dn | d() else "ignore" }}'
+
+                                                                   # ]]]
+# .. envvar:: postgresql_server__kerberos__dependent_tasks [[[
+#
+# Configuration for the :ref:`debops.kerberos` Ansible role.
+postgresql_server__kerberos__dependent_tasks:
+  - name: 'Ensure that the Kerberos principal {{ postgresql_server__kerberos_princ }} exists'
+    principal: '{{ postgresql_server__kerberos_princ }}'
+    path: '/etc/krb5.keytab.d/postgresql.keytab'
+    mode: '0640'
+    owner: 'root'
+    group: 'postgres'
+    ldap_dn: '{{ postgresql_server__ldap_self_dn if postgresql_server__ldap_device_dn | d() else omit }}'
+
+                                                                   # ]]]
                                                                    # ]]]
                                                                    # ]]]
