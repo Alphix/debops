@@ -401,6 +401,10 @@ sshd__original_configuration:
     value: True
     state: 'init'
 
+  - name: 'GSSAPIStoreCredentialsOnRekey'
+    value: False
+    state: 'absent'
+
   - name: 'GSSAPIKeyExchange'
     value: False
     state: 'init'
@@ -709,6 +713,27 @@ sshd__default_configuration:
                if (sshd__authorized_keys_lookup | bool and
                    sshd__version is version("6.2", ">="))
                else "ignore" }}'
+
+  - name: 'GSSAPIAuthentication'
+    comment: 'GSSAPI options'
+    value: True
+    state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "ignore" }}'
+
+  - name: 'GSSAPICleanupCredentials'
+    value: True
+    state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "ignore" }}'
+
+  - name: 'GSSAPIStrictAcceptorCheck'
+    value: True
+    state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "ignore" }}'
+
+  - name: 'GSSAPIStoreCredentialsOnRekey'
+    value: True
+    state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "ignore" }}'
+
+  - name: 'GSSAPIKeyExchange'
+    value: True
+    state: '{{ "present" if ansible_local.kerberos.enabled | d(False) else "ignore" }}'
 
                                                                    # ]]]
 # .. envvar:: sshd__configuration [[[
