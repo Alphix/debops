@@ -53,6 +53,9 @@
                                  if dovecot__snapshot_deploy_state
                                     | d("absent") == "present"
                                  else [])
+                              + (["dovecot-gssapi"]
+                                 if "gssapi" in dovecot__auth_mechanisms
+                                 else [])
                              )) }}'
     state: 'present'
   register: dovecot__register_packages

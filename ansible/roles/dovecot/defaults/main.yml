@@ -3,8 +3,8 @@
 
 # .. Copyright (C) 2015      Reto Gantenbein <reto.gantenbein@linuxmonk.ch>
 # .. Copyright (C) 2017-2020 Maciej Delmanowski <drybjed@gmail.com>
-# .. Copyright (C) 2021      David Härdeman <david@hardeman.nu>
-# .. Copyright (C) 2015-2021 DebOps <https://debops.org/>
+# .. Copyright (C) 2021-2023 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2015-2023 DebOps <https://debops.org/>
 # .. SPDX-License-Identifier: GPL-3.0-only
 
 # .. _dovecot__ref_defaults:
@@ -30,9 +30,31 @@ dovecot__features: [ 'imap', 'imaps', 'lmtp', 'sieve', 'quota' ]
                                                                    # ]]]
 # .. envvar:: dovecot__auth_mechanisms [[[
 #
-# List of enabled authentication mechanisms. Currently ``plain`` and ``login``
-# are supported.
-dovecot__auth_mechanisms: [ 'plain', 'login' ]
+# List of enabled authentication mechanisms. Currently ``plain``, ``login``
+# and, optionally, ``gssapi`` (Kerberos) are supported.
+dovecot__auth_mechanisms: '{{ [ "plain", "login" ]
+                              + ([ "gssapi" ] if ansible_local.kerberos.enabled | d(False) else []) }}'
+
+                                                                   # ]]]
+# .. envvar:: dovecot__kerberos_realm [[[
+#
+# The Kerberos realm to use.
+dovecot__kerberos_realm: '{{ ansible_local.kerberos.default_realm
+                             | d(ansible_domain) | upper }}'
+
+                                                                   # ]]]
+# .. envvar:: dovecot__kerberos_princ [[[
+#
+# The Kerberos principal to use for IMAP connections.
+dovecot__kerberos_princ: '{{ "imap/" + ansible_fqdn + "@"
+                             + (dovecot__kerberos_realm | upper) }}'
+
+                                                                   # ]]]
+# .. envvar:: dovecot__kerberos_smtp_princ [[[
+#
+# The Kerberos principal to use for SASL authentication when sending emails.
+dovecot__kerberos_smtp_princ: '{{ "smtp/" + ansible_fqdn + "@"
+                                  + (dovecot__kerberos_realm | upper) }}'
 
                                                                    # ]]]
 # .. envvar:: dovecot__version [[[
@@ -41,6 +63,7 @@ dovecot__auth_mechanisms: [ 'plain', 'login' ]
 # defined via Ansible local facts and can be used in conditions to modify the
 # configuration as needed.
 dovecot__version: '{{ ansible_local.dovecot.version | d("0.0.0") }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # User database/mailbox configuration [[[
@@ -502,6 +525,14 @@ dovecot__default_configuration:
       - name: 'mail_privileged_group'
         value: '{{ dovecot__vmail_posix_user }}'
         state: '{{ "present" if dovecot__vmail_enabled | d(False) else "absent" }}'
+
+      - name: 'auth_gssapi_hostname'
+        value: '"$ALL"'
+        state: '{{ "present" if "gssapi" in dovecot__auth_mechanisms else "absent" }}'
+
+      - name: 'auth_krb5_keytab'
+        value: '/etc/krb5.keytab.d/dovecot.keytab'
+        state: '{{ "present" if "gssapi" in dovecot__auth_mechanisms else "absent" }}'
 
       - name: 'passdb_deny'
         option: 'passdb'
@@ -1223,7 +1254,8 @@ dovecot__ldap_self_rdn: 'uid=dovecot'
 #
 # List of the LDAP object classes which will be used to create the LDAP object
 # used by the :command:`dovecot` service to access the LDAP directory.
-dovecot__ldap_self_object_classes: [ 'account', 'simpleSecurityObject' ]
+dovecot__ldap_self_object_classes: [ 'account', 'simpleSecurityObject',
+                                     'krbPrincipalAux', 'krbPrincRefAux' ]
 
                                                                    # ]]]
 # .. envvar:: dovecot__ldap_self_attributes [[[
@@ -1348,6 +1380,36 @@ dovecot__ldap__dependent_tasks:
                 if (dovecot__ldap_enabled | bool and
                     dovecot__ldap_device_dn | d())
                 else "ignore" }}'
+
+                                                                   # ]]]
+# .. envvar:: dovecot__kerberos__dependent_tasks [[[
+#
+# Configuration for the :ref:`debops.kerberos` Ansible role.
+dovecot__kerberos__dependent_tasks:
+  - name: 'Configure the Kerberos principal {{ dovecot__kerberos_princ }}'
+    principal: '{{ dovecot__kerberos_princ }}'
+    path: '/etc/krb5.keytab.d/dovecot.keytab'
+    mode: '0640'
+    owner: 'root'
+    group: 'dovecot'
+    ldap_dn: '{{ dovecot__ldap_binddn
+                 if (dovecot__ldap_enabled | bool and
+                     dovecot__ldap_device_dn | d())
+                 else omit }}'
+    state: '{{ "present" if "gssapi" in dovecot__auth_mechanisms else "absent" }}'
+
+  - name: 'Configure the Kerberos principal {{ dovecot__kerberos_smtp_princ }}'
+    principal: '{{ dovecot__kerberos_smtp_princ }}'
+    path: '/etc/krb5.keytab.d/dovecot.keytab'
+    mode: '0640'
+    owner: 'root'
+    group: 'dovecot'
+    ldap_linkdn: '{{ dovecot__ldap_binddn
+                     if (dovecot__ldap_enabled | bool and
+                         dovecot__ldap_device_dn | d())
+                     else omit }}'
+    state: '{{ "present" if ("gssapi" in dovecot__auth_mechanisms and
+                             "lmtp" in dovecot__features) else "absent" }}'
 
                                                                    # ]]]
 # .. envvar:: dovecot__postfix__dependent_maincf [[[

@@ -1,7 +1,8 @@
 ---
 # Copyright (C) 2015      Reto Gantenbein <reto.gantenbein@linuxmonk.ch>
 # Copyright (C) 2017-2020 Maciej Delmanowski <drybjed@gmail.com>
-# Copyright (C) 2015-2020 DebOps <https://debops.org/>
+# Copyright (C) 2022-2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2015-2023 DebOps <https://debops.org/>
 # SPDX-License-Identifier: GPL-3.0-only
 
 - name: Manage Dovecot service
@@ -72,6 +73,11 @@
       tags: [ 'role::ldap', 'skip::ldap' ]
       ldap__dependent_tasks:
         - '{{ dovecot__ldap__dependent_tasks }}'
+
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__dependent_tasks:
+        - '{{ dovecot__kerberos__dependent_tasks }}'
 
     - role: dovecot
       tags: [ 'role::dovecot', 'skip::dovecot' ]
