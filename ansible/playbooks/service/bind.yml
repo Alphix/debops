@@ -49,6 +49,16 @@
       apparmor__dependent_locals:
         - '{{ bind__apparmor__dependent_locals }}'
 
+    - role: ldap
+      tags: [ 'role::ldap', 'skip::ldap' ]
+      ldap__dependent_tasks:
+        - '{{ bind__ldap__dependent_tasks }}'
+
+    - role: kerberos
+      tags: [ 'role::kerberos', 'skip::kerberos' ]
+      kerberos__dependent_tasks:
+        - '{{ bind__kerberos__dependent_tasks }}'
+
     - role: bind
       tags: [ 'role::bind', 'skip::bind' ]
 
