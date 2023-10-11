@@ -1,0 +1,42 @@
+#!{{ ansible_python['executable'] }}
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2023 Maciej Delmanowski <drybjed@gmail.com>
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2023 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+# {{ ansible_managed }}
+
+from __future__ import print_function
+from json import loads, dumps
+import subprocess
+import os
+
+
+def cmd_exists(cmd):
+    return any(
+        os.access(os.path.join(path, cmd), os.X_OK)
+        for path in os.environ["PATH"].split(os.pathsep)
+    )
+
+
+output = {'installed': cmd_exists('gssproxy')}
+
+try:
+    is_enabled = subprocess.check_output(
+            ["systemctl", "is-enabled",
+                "gssproxy.service"]).decode('utf-8')
+    output['state'] = is_enabled.strip()
+except subprocess.CalledProcessError:
+    output['state'] = 'disabled'
+
+try:
+    output['version'] = subprocess.check_output(
+            ["gssproxy", "--version"]
+            ).decode('utf-8').strip()
+
+except Exception:
+    pass
+
+print(dumps(output, sort_keys=True, indent=4))

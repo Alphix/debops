@@ -1,0 +1,12 @@
+{# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2023 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+# {{ ansible_managed }}
+
+[Unit]
+# gssproxy wants to open /proc/net/rpc/use-gss-proxy, created by the
+# auth_rpcgss module, which is typically loaded by nfs-kernel-server,
+# which might lauch after gssproxy
+Wants=modprobe@auth_rpcgss.service
+After=modprobe@auth_rpcgss.service

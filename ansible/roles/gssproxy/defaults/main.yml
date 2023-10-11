@@ -1,0 +1,98 @@
+---
+# .. vim: foldmarker=[[[,]]]:foldmethod=marker
+
+# .. Copyright (C) 2023 David Härdeman <drybjed@gmail.com>
+# .. Copyright (C) 2023 DebOps <https://debops.org/>
+# .. SPDX-License-Identifier: GPL-3.0-only
+
+# .. _gssproxy__ref_defaults:
+
+# debops.gssproxy default variables
+# =================================
+
+# .. contents:: Sections
+#    :local:
+#
+# .. include:: ../../../../includes/global.rst
+
+
+# Packages [[[
+# ------------
+
+# .. envvar:: gssproxy__base_packages: [[[
+#
+# List of base packages required by the role.
+gssproxy__base_packages: [ 'gssproxy' ]
+
+                                                                   # ]]]
+# .. envvar:: gssproxy__packages [[[
+#
+# List of additional packages to install by the role.
+gssproxy__packages: []
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Configuration files [[[
+# -----------------------
+
+# These variables define the content of the configuration files in the
+# :file:`/etc/gssproxy` directory, see :ref:`gssproxy__ref_configuration`
+# for more details.
+
+# .. envvar:: gssproxy__default_configuration [[[
+#
+# List of the default configuration files defined by the role.
+gssproxy__default_configuration:
+
+  - name: 'gssproxy'
+    comment: 'See gssproxy.conf(5) for details'
+    options:
+
+      - name: 'gssproxy'
+        options:
+
+          - name: 'debug_level'
+            value: 3
+            state: 'comment'
+
+                                                                   # ]]]
+# .. envvar:: gssproxy__dependent_configuration [[[
+#
+# List of the configuration files which should be created, for use by other
+# roles.
+gssproxy__dependent_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: gssproxy__configuration [[[
+#
+# List of the configuration files which should be present on all hosts
+# in the Ansible inventory.
+gssproxy__configuration: []
+
+                                                                   # ]]]
+# .. envvar:: gssproxy__group_configuration [[[
+#
+# List of the configuration files which should be present on hosts in a
+# specific Ansible inventory group.
+gssproxy__group_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: gssproxy__host_configuration [[[
+#
+# List of the configuration options which should be present on specific hosts
+# in the Ansible inventory.
+gssproxy__host_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: gssproxy__combined_configuration [[[
+#
+# Variable which combines all configuration variables for use use in the role
+# tasks and templates.
+gssproxy__combined_configuration: '{{ gssproxy__default_configuration
+                                      + gssproxy__dependent_configuration
+                                      + gssproxy__configuration
+                                      + gssproxy__group_configuration
+                                      + gssproxy__host_configuration }}'
+
+                                                                   # ]]]
+                                                                   # ]]]

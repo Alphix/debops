@@ -24,6 +24,9 @@
 - name: Configure LVM subsystem
   import_playbook: '../service/lvm.yml'
 
+- name: Configure gssproxy service
+  import_playbook: '../service/gssproxy.yml'
+
 - name: Configure NFS server service
   import_playbook: '../service/nfs_server.yml'
 

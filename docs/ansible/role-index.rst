@@ -94,6 +94,7 @@ are not accessed directly by end users.
 - :ref:`debops.gitlab_runner`
 - :ref:`debops.fcgiwrap`
 - :ref:`debops.freeradius`
+- :ref:`debops.gssproxy`
 - :ref:`debops.gunicorn`
 - :ref:`debops.keepalived`
 - :ref:`debops.imapproxy`
