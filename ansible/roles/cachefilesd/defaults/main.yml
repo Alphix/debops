@@ -1,0 +1,125 @@
+---
+# .. vim: foldmarker=[[[,]]]:foldmethod=marker
+
+# .. Copyright (C) 2023 David Härdeman <drybjed@gmail.com>
+# .. Copyright (C) 2023 DebOps <https://debops.org/>
+# .. SPDX-License-Identifier: GPL-3.0-only
+
+# .. _cachefilesd__ref_defaults:
+
+# debops.cachefilesd default variables
+# ====================================
+
+# .. contents:: Sections
+#    :local:
+#
+# .. include:: ../../../../includes/global.rst
+
+
+# Packages [[[
+# ------------
+
+# .. envvar:: cachefilesd__base_packages: [[[
+#
+# List of base packages required by the role.
+cachefilesd__base_packages: [ 'cachefilesd' ]
+
+                                                                   # ]]]
+# .. envvar:: cachefilesd__packages [[[
+#
+# List of additional packages to install by the role.
+cachefilesd__packages: []
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Configuration [[[
+# -----------------
+
+# These variables define the content of the :file:`/etc/cachefilesd.conf`
+# configuration file, see :ref:`cachefilesd__ref_configuration` for more
+# details.
+
+# .. envvar:: cachefilesd__directory [[[
+#
+# The directory in which to store cached data.
+cachefilesd__directory: '/var/cache/fscache'
+
+                                                                   # ]]]
+# .. envvar:: cachefilesd__original_configuration [[[
+#
+# List of the original configuration options defined by the
+# :command:`cachefilesd` package.
+cachefilesd__original_configuration:
+
+  - name: 'dir'
+    value: '/var/cache/fscache'
+
+  - name: 'tag'
+    value: 'mycache'
+
+  - name: 'brun'
+    value: '10%'
+
+  - name: 'bcull'
+    value: '7%'
+
+  - name: 'bstop'
+    value: '3%'
+
+  - name: 'frun'
+    value: '10%'
+
+  - name: 'fcull'
+    value: '7%'
+
+  - name: 'fstop'
+    value: '3%'
+
+  - name: 'secctx'
+    value: 'system_u:system_r:cachefiles_kernel_t:s0'
+    comment: |-
+      Assuming you're using SELinux with the default security policy included in
+      this package
+    state: 'comment'
+
+                                                                   # ]]]
+# .. envvar:: cachefilesd__default_configuration [[[
+#
+# List of the default configuration options defined by the role.
+cachefilesd__default_configuration:
+
+  - name: 'dir'
+    value: '{{ cachefilesd__directory | d("/var/cache/fscache") }}'
+
+                                                                   # ]]]
+# .. envvar:: cachefilesd__configuration [[[
+#
+# List of the configuration options for all hosts in the Ansible inventory.
+cachefilesd__configuration: []
+
+                                                                   # ]]]
+# .. envvar:: cachefilesd__group_configuration [[[
+#
+# List of configuration options for hosts in a specific Ansible inventory
+# group.
+cachefilesd__group_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: cachefilesd__host_configuration [[[
+#
+# List of configuration options for specific hosts in the Ansible inventory.
+cachefilesd__host_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: cachefilesd__combined_configuration [[[
+#
+# Variable which combines all configuration variables for use use in the role
+# tasks and templates.
+cachefilesd__combined_configuration: '{{ cachefilesd__original_configuration
+                                         + cachefilesd__default_configuration
+                                         + cachefilesd__configuration
+                                         + cachefilesd__group_configuration
+                                         + cachefilesd__host_configuration }}'
+
+                                                                   # ]]]
+                                                                   # ]]]

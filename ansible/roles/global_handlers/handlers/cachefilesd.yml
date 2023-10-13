@@ -1,0 +1,10 @@
+---
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2023 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+- name: Restart cachefilesd service
+  ansible.builtin.systemd:
+    name: 'cachefilesd.service'
+    state: 'restarted'
+  when: ansible_service_mgr == 'systemd'

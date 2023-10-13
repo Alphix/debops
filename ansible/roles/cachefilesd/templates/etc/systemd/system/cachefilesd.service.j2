@@ -1,0 +1,51 @@
+{# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2023 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+# {{ ansible_managed }}
+
+[Unit]
+Description=Local network file caching management daemon
+Documentation=https://docs.debops.org/en/master/ansible/roles/debops.cachefilesd/
+Documentation=man:cachefilesd(8) man:cachefilesd.conf(5)
+ConditionFileNotEmpty=/etc/cachefilesd.conf
+ConditionPathIsDirectory={{ cachefilesd__directory }}
+Wants=modprobe@cachefiles.service
+After=modprobe@cachefiles.service
+Before=remote-fs.target
+
+[Service]
+Type=simple
+ProtectSystem=strict
+ReadWritePaths={{ cachefilesd__directory }}
+ProtectHome=tmpfs
+PrivateTmp=yes
+PrivateDevices=no
+DeviceAllow=/dev/cachefiles
+DevicePolicy=closed
+PrivateNetwork=yes
+PrivateIPC=yes
+PrivateUsers=no
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=none
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+PrivateMounts=yes
+SystemCallFilter=@basic-io @file-system @io-event @setuid @signal @sync
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_SETGID CAP_SYS_ADMIN CAP_DAC_OVERRIDE
+RuntimeDirectory=cachefilesd
+ExecStart=/sbin/cachefilesd -n -p /run/cachefilesd/cachefilesd.pid
+
+[Install]
+WantedBy=multi-user.target

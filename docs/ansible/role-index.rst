@@ -90,6 +90,7 @@ are not accessed directly by end users.
 - :ref:`debops.ansible`
 - :ref:`debops.apt_cacher_ng`
 - :ref:`debops.apt_mirror`
+- :ref:`debops.cachefilesd`
 - :ref:`debops.controller` - install DebOps on other hosts
 - :ref:`debops.gitlab_runner`
 - :ref:`debops.fcgiwrap`

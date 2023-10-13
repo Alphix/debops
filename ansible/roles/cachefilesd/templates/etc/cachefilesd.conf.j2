@@ -1,0 +1,38 @@
+{# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2023 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+###############################################################################
+#
+# /etc/cachefilesd.conf - See cachefilesd.conf(5)
+#
+# {{ ansible_managed }}
+#
+###############################################################################
+
+{% macro print_option(option) %}
+{%   if option.name | d() and option.state | d('present') not in [ 'absent', 'ignore' ] %}
+{%     if option.comment | d() %}
+
+{{       option.comment | regex_replace('\n$', '') | comment(prefix='', decoration='#', postfix='') -}}
+{%     endif %}
+{%     set option_comment = ('#' if (option.state | d('present') in [ 'init', 'comment' ]) else '') %}
+{%     set option_value = '' %}
+{%     if option.value is defined %}
+{%       if option.value is string %}
+{%         set option_value = option.value %}
+{%       elif option.value is number %}
+{%         set option_value = option.value %}
+{%       endif %}
+{%     endif %}
+{%     if option_value == '' %}
+{{       '{}{}'.format(option_comment, option.option | d(option.name)) }}
+{%     else %}
+{{       '{}{} {}'.format(option_comment, option.option | d(option.name), option_value) }}
+{%     endif %}
+{%   endif %}
+{% endmacro %}
+{##}
+{% for option in cachefilesd__combined_configuration | debops.debops.parse_kv_config %}
+{{   print_option(option) -}}
+{% endfor %}
