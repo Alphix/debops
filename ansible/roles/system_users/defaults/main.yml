@@ -234,7 +234,7 @@ system_users__default_accounts:
 
   - name: '{{ system_users__self_name }}'
     group: '{{ system_users__self_name }}'
-    prefix: '{{ "" if ansible_user | d() else system_users__prefix }}'
+    prefix: '{{ system_users__prefix }}'
     comment: '{{ system_users__fact_self_comment
                  | d(system_users__self_comment)
                  | regex_replace(",,,$", "") }}'
