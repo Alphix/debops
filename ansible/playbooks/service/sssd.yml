@@ -28,6 +28,11 @@
       ldap__dependent_tasks:
         - '{{ sssd__ldap__dependent_tasks }}'
 
+    - role: apparmor
+      tags: [ 'role::apparmor', 'skip::apparmor' ]
+      apparmor__dependent_locals:
+        - '{{ sssd__apparmor__dependent_locals }}'
+
     - role: sssd
       tags: [ 'role::sssd', 'skip::sssd' ]
 

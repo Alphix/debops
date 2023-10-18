@@ -432,4 +432,31 @@ sssd__ldap__dependent_tasks:
 # Configuration for the :ref:`debops.nsswitch` Ansible role.
 sssd__nsswitch__dependent_services: [ 'sss' ]
                                                                    # ]]]
+# .. envvar:: sssd__apparmor__dependent_locals [[[
+#
+# Configuration for the :ref:`debops.apparmor` Ansible role.
+sssd__apparmor__dependent_locals:
+
+  - name: 'usr.sbin.sssd'
+    options:
+
+      - name: 'capability'
+        value: 'net_admin'
+
+      - name: '/etc/ssl/openssl.cnf'
+        value: 'r'
+
+      - name: '/sys/devices/**/net/*/type'
+        value: 'r'
+
+      - name: '/var/lib/dbus/machine-id'
+        value: 'r'
+
+      - name: '/usr/share/p11-kit/modules/*'
+        value: 'r'
+
+      - name: '/{,var/}run/systemd/users/*'
+        value: 'r'
+
+                                                                   # ]]]
                                                                    # ]]]
