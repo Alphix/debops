@@ -428,12 +428,24 @@ slapd__tls_certificate: '{{ slapd__pki_path + "/" + slapd__pki_realm + "/" + sla
 slapd__tls_private_key: '{{ slapd__pki_path + "/" + slapd__pki_realm + "/" + slapd__pki_key }}'
 
                                                                    # ]]]
+# .. envvar:: slapd__tls_versions [[[
+#
+# List of TLS protocols to support.
+slapd__tls_protocols: [ 'TLS1.3', 'TLS1.2' ]
+
+                                                                   # ]]]
 # .. envvar:: slapd__tls_cipher_suite [[[
 #
-# TLS cipher suite required by the server. On Debian, you need to use the
-# GnuTLS cipher suite names, because :command:`slapd` daemon is compiled
-# against GnuTLS instead of OpenSSL.
-slapd__tls_cipher_suite: 'SECURE256:PFS:-VERS-SSL3.0:-VERS-TLS-ALL:+VERS-TLS1.2:-SHA1:-ARCFOUR-128'
+# TLS cipher suite required by the server. Since the :command:`slapd` daemon is
+# compiled against GnuTLS instead of OpenSSL, this needs to be a valid `GnuTLS
+# priority string`__.
+#
+# .. __: https://gnutls.org/manual/html_node/Priority-Strings.html#tab_003aprio_002dkeywords
+slapd__tls_cipher_suite: '{{ "SECURE256:-VERS-ALL:" + ":".join(
+                               [ "+VERS-" + x for x in
+                                 slapd__tls_protocols | d(["TLS1.3"])
+                               ]) }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # OpenLDAP configuration tasks [[[
@@ -1216,10 +1228,10 @@ slapd__snapshot_cron_jobs: [ 'daily', 'weekly', 'monthly' ]
 # Network access is controlled using the firewall rules defined below.
 slapd__services:
 
-  # Listen for plaintext and StartTLS connections
+  # Listen for plaintext and StartTLS connections (not recommended)
   - 'ldap:///'
 
-  # Listen for encrypted SSL connections (deprecated)
+  # Listen for encrypted TLS connections (recommended)
   - '{{ "ldaps:///" if slapd__pki | bool else [] }}'
 
   # Listen for connections on local UNIX domain socket
@@ -1233,10 +1245,10 @@ slapd__services:
 # can contact the LDAP service.
 slapd__ports:
 
-  # Plaintext and StartTLS connections on port 389/tcp
+  # Plaintext and StartTLS connections on port 389/tcp (not recommended)
   - 'ldap'
 
-  # Encrypted SSL connections on port 636/tcp (deprecated)
+  # Encrypted TLS connections on port 636/tcp (recommended)
   - '{{ "ldaps" if slapd__pki | bool else [] }}'
 
                                                                    # ]]]
