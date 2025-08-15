@@ -1,6 +1,6 @@
 ---
 # Copyright (C) 2016 Maciej Delmanowski <drybjed@gmail.com>
-# Copyright (C) 2016 DebOps <https://debops.org/>
+# Copyright (C) 2016-2025 DebOps <https://debops.org/>
 # SPDX-License-Identifier: GPL-3.0-only
 
 - name: Manage APT packages
@@ -11,6 +11,14 @@
     purge: True
   register: apt_listchanges__register_packages
   until: apt_listchanges__register_packages is succeeded
+
+- name: Add/remove diversion of /etc/apt/listchanges.conf
+  debops.debops.dpkg_divert:
+    path: '/etc/apt/listchanges.conf'
+    state: '{{ apt_listchanges__deploy_state }}'
+    delete: True
+  register: apt_listchanges__register_conf_diversion
+  when: apt_listchanges__deploy_state in ['absent', 'present']
 
 - name: Configure apt-listchanges
   ansible.builtin.template:

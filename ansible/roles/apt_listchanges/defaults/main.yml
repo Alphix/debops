@@ -2,7 +2,7 @@
 # .. vim: foldmarker=[[[,]]]:foldmethod=marker
 
 # .. Copyright (C) 2016 Maciej Delmanowski <drybjed@gmail.com>
-# .. Copyright (C) 2016 DebOps <https://debops.org/>
+# .. Copyright (C) 2016-2025 DebOps <https://debops.org/>
 # .. SPDX-License-Identifier: GPL-3.0-only
 
 # .. _apt_listchanges__ref_defaults:
@@ -120,6 +120,9 @@ apt_listchanges__profile_apt:
   confirm: '0'
   which: '{{ apt_listchanges__apt_which }}'
   save_seen: '/var/lib/apt/listchanges.db'
+  email_format: 'text'
+  headers: 'false'
+  reverse: 'false'
 
                                                                    # ]]]
 # .. envvar:: apt_listchanges__profile_apticron [[[
