@@ -162,19 +162,19 @@ ipxe__debian_netboot_default_release_map:
   - name: 'trixie-amd64'
     release: 'trixie'
     architecture: 'amd64'
-    netboot_version: '20250803+deb13u1'
-    netboot_checksum: 'sha256:a75870b27965ef67f13a2cdc9d4c574224e16b9b2764f88bf0ecc7c28b244fcb'  # netboot.tar.gz
-    firmware_version: '20250906'
-    firmware_checksum: 'sha256:e00d0f1c498932e0b8e86663701a96a9d3ad30c0f9200e21427b8db7ce2c900a'  # firmware.cpio.gz
+    netboot_version: '20250803+deb13u2'
+    netboot_checksum: 'sha256:8873ac8c3a2c011f98d125be66ba1c33955798c4e9fd4aef33b3f257ef409098'  # netboot.tar.gz
+    firmware_version: '20251115'
+    firmware_checksum: 'sha256:8bfc1b4355481198e565bc640e86755a7c1ed1e49c9c041372405ca5707dc5cc'  # firmware.cpio.gz
 
   - name: 'trixie-amd64-gtk'
     release: 'trixie'
     architecture: 'amd64'
     netboot_subdir: '/gtk'
-    netboot_version: '20250803+deb13u1'
-    netboot_checksum: 'sha256:ac444dfe9f4e6d62aa54e8d33eae9c30984fb73ee78a15d115273c39026a08eb'  # netboot.tar.gz
-    firmware_version: '20250906'
-    firmware_checksum: 'sha256:e00d0f1c498932e0b8e86663701a96a9d3ad30c0f9200e21427b8db7ce2c900a'  # firmware.cpio.gz
+    netboot_version: '20250803+deb13u2'
+    netboot_checksum: 'sha256:4debb7d835aa754637ebad539698a3d5f88e147aeffd552c79541e30448b6504'  # netboot.tar.gz
+    firmware_version: '20251115'
+    firmware_checksum: 'sha256:8bfc1b4355481198e565bc640e86755a7c1ed1e49c9c041372405ca5707dc5cc'  # firmware.cpio.gz
 
                                                                    # ]]]
 # .. envvar:: ipxe__debian_netboot_release_map [[[
@@ -422,7 +422,7 @@ ipxe__default_scripts:
       item --gap Select release:
       item trixie ${space} Debian GNU/Linux 13 (Trixie)
       item bookworm ${space} Debian GNU/Linux 12 (Bookworm)
-      item bullseye ${space} Debian GNU/Linux 11 (bullseye)
+      item bullseye ${space} Debian GNU/Linux 11 (Bullseye)
       choose --default ${debian-installer-cursor} version || goto debian_exit
       set debian-installer-cursor ${version}
 
