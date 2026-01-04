@@ -7,7 +7,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Installation in development mode:
+#   sudo apt install pipx
 #   pipx install --editable .
+#   pipx inject --include-apps --include-deps debops ansible
+#   pipx inject debops dnspython python-ldap future netaddr passlib toml
+#
+# The DebOps and Ansible binaries will be installed to ~/.local/bin/, you might
+# want to make sure that it is included in your $PATH.
 
 from setuptools import setup, find_packages
 import subprocess
