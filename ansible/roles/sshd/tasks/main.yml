@@ -149,6 +149,13 @@
         sshd__trusted_user_ca_keys_file is defined
   tags: [ 'role::sshd:config' ]
 
+- name: Add diversion of /etc/ssh/sshd_config
+  debops.debops.dpkg_divert:
+    path: '/etc/ssh/sshd_config'
+    state: 'present'
+    delete: True
+  tags: [ 'role::sshd:config' ]
+
 - name: Setup /etc/ssh/sshd_config
   ansible.builtin.template:
     src:    '{{ lookup("debops.debops.template_src", "etc/ssh/sshd_config.j2") }}'

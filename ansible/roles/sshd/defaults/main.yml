@@ -37,7 +37,7 @@ sshd__recommended_packages: '{{ ["openssh-blacklist", "openssh-blacklist-extra"]
 # .. envvar:: sshd__optional_packages [[[
 #
 # List of optional packages that should be installed with OpenSSH.
-sshd__optional_packages: [ 'molly-guard' ]
+sshd__optional_packages: []
 
                                                                    # ]]]
 # .. envvar:: sshd__ldap_packages [[[
@@ -208,7 +208,7 @@ sshd__ports: [ '22' ]
 # .. envvar:: sshd__host_keys [[[
 #
 # List of SSH host keys that should be enabled, in order of preference.
-sshd__host_keys: [ 'ed25519', 'rsa', 'ecdsa' ]
+sshd__host_keys: [ 'ed25519' ]
 
                                                                    # ]]]
 # .. envvar:: sshd__trusted_user_ca_keys [[[
@@ -278,7 +278,7 @@ sshd__original_configuration:
     separator: True
 
   - name: 'RekeyLimit'
-    comment: 'Ciphers and keyring'
+    comment: 'Ciphers and keying'
     value: 'default none'
     state: 'init'
 
@@ -292,7 +292,7 @@ sshd__original_configuration:
     state: 'init'
 
   - name: 'LoginGraceTime'
-    comment: 'Authentication'
+    comment: 'Authentication:'
     value: '2m'
     state: 'init'
 
@@ -357,27 +357,19 @@ sshd__original_configuration:
 
   - name: 'PasswordAuthentication'
     comment: 'To disable tunneled clear text passwords, change to no here!'
-    value: True
-    state: 'init'
+    value: False
 
-  - name: 'ChallengeResponseAuthentication'
-    comment: |
-      Change to yes to enable challenge-response passwords (beware issues with
-      some PAM modules and threads). From openssh-server version 8.7, this option
-      is deprecated and is an alias of KbdInteractiveAuthentication.
+  - name: 'PermitEmptyPasswords'
     value: False
     state: 'init'
 
   - name: 'KbdInteractiveAuthentication'
     comment: |
-      Change to yes to enable challenge-response passwords (beware issues with
-      some PAM modules and threads)
+      Change to "yes" to enable keyboard-interactive authentication.  Depending on
+      the system's configuration, this may involve passwords, challenge-response,
+      one-time passwords or some combination of these and other methods.
+      Beware issues with some PAM modules and threads.
     value: False
-    state: 'init'
-
-  - name: 'PermitEmptyPasswords'
-    value: False
-    state: 'init'
 
   - name: 'KerberosAuthentication'
     comment: 'Kerberos options'
@@ -417,13 +409,13 @@ sshd__original_configuration:
     comment: |
       Set this to 'yes' to enable PAM authentication, account processing,
       and session processing. If this is enabled, PAM authentication will
-      be allowed through the ChallengeResponseAuthentication and
+      be allowed through the KbdInteractiveAuthentication and
       PasswordAuthentication.  Depending on your PAM configuration,
-      PAM authentication via ChallengeResponseAuthentication may bypass
+      PAM authentication via KbdInteractiveAuthentication may bypass
       the setting of "PermitRootLogin without-password".
       If you just want the PAM account and session checks to run without
       PAM authentication, then enable this but set PasswordAuthentication
-      and ChallengeResponseAuthentication to 'no'.
+      and KbdInteractiveAuthentication to 'no'.
     value: True
 
   - name: 'AllowAgentForwarding'
@@ -511,10 +503,12 @@ sshd__original_configuration:
     state: 'init'
 
   - name: 'AcceptEnv'
-    comment: 'Allow client to pass locale environment variables'
+    comment: 'Allow client to pass locale and color environment variables'
     value:
       - 'LANG'
       - 'LC_*'
+      - 'COLORTERM'
+      - 'NO_COLOR'
 
   - name: 'Subsystem_sftp'
     option: 'Subsystem'
@@ -646,16 +640,7 @@ sshd__default_configuration:
                else True }}'
     state: 'present'
 
-  # Disable ChallengeResponseAuthentication by default. Otherwise, setting
-  # PasswordAuthentication to False is not enough to force authentication
-  # by public key. From openssh-server 8.7, ChallengeResponseAuthentication
-  # is deprecated and is an alias for KbdInteractiveAuthentication.
-  - name: 'ChallengeResponseAuthentication'
-    value: False
-    state: 'present'
-
-  # Disable KbdInteractiveAuthentication (new name of the deprecated
-  # ChallengeResponseAuthentication) by default. Otherwise, setting
+  # Disable KbdInteractiveAuthentication by default. Otherwise, setting
   # PasswordAuthentication to False is not enough to force authentication
   # by public key.
   - name: 'KbdInteractiveAuthentication'
@@ -709,24 +694,6 @@ sshd__default_configuration:
       {{ 'MACs {}'.format(sshd__tpl_macs | join(",")) }}
       {% endif %}
     state: 'present'
-    copy_id_from: 'RekeyLimit'
-
-    # Privilege Separation is default for sshd v7.5+
-  - name: 'UsePrivilegeSeparation'
-    comment: 'Privilege Separation is turned on for security'
-    value: 'sandbox'
-    state: '{{ "present" if (sshd__version is version("7.5", "<")) else "ignore" }}'
-    copy_id_from: 'RekeyLimit'
-
-  - name: 'KeyRegenerationInterval'
-    comment: 'Lifetime and size of ephemeral version 1 server key'
-    value: 3600
-    state: '{{ "present" if (sshd__version is version("7.4", "<")) else "ignore" }}'
-    copy_id_from: 'RekeyLimit'
-
-  - name: 'ServerKeyBits'
-    value: 1024
-    state: '{{ "present" if (sshd__version is version("7.4", "<")) else "ignore" }}'
     copy_id_from: 'RekeyLimit'
 
   - name: 'AuthorizedKeysCommand'
@@ -822,6 +789,10 @@ sshd__known_hosts_command: 'ssh-keyscan -H -T 10'
 # supersedes older version.
 sshd__ciphers_map:
 
+  '9.9': [ 'chacha20-poly1305@openssh.com',
+           'aes256-gcm@openssh.com',
+           'aes128-gcm@openssh.com' ]
+
   # Source: https://wiki.mozilla.org/Security/Guidelines/OpenSSH
   '6.5': [ 'chacha20-poly1305@openssh.com', 'aes256-gcm@openssh.com',
            'aes128-gcm@openssh.com', 'aes256-ctr', 'aes192-ctr',
@@ -847,6 +818,12 @@ sshd__ciphers_additional: []
 # oldest. Newer version supersedes older version.
 sshd__kex_algorithms_map:
 
+  '9.9': [ 'mlkem768x25519-sha256',
+           'sntrup761x25519-sha512',
+           'sntrup761x25519-sha512@openssh.com',
+           'curve25519-sha256',
+           'curve25519-sha256@libssh.org' ]
+
   # Source: https://wiki.mozilla.org/Security/Guidelines/OpenSSH
   '6.5': [ 'curve25519-sha256@libssh.org', 'ecdh-sha2-nistp521',
            'ecdh-sha2-nistp384', 'ecdh-sha2-nistp256',
@@ -871,6 +848,10 @@ sshd__kex_algorithms_additional: []
 # by the ``sshd`` server, depending on available version, ordered from stronger
 # to weaker. Newer version supersedes older version.
 sshd__macs_map:
+
+  '9.9': [ 'hmac-sha2-512-etm@openssh.com',
+           'hmac-sha2-256-etm@openssh.com',
+           'umac-128-etm@openssh.com' ]
 
   # Source: https://wiki.mozilla.org/Security/Guidelines/OpenSSH
   '6.5': [ 'hmac-sha2-512-etm@openssh.com', 'hmac-sha2-256-etm@openssh.com',
@@ -927,7 +908,10 @@ sshd__authorized_keys_lookup_user: 'sshd'
 # .. envvar:: sshd__authorized_keys_lookup_type [[[
 #
 # List of lookup scripts that should be enabled on a host.
-sshd__authorized_keys_lookup_type: [ 'ldap', 'sss' ]
+sshd__authorized_keys_lookup_type: [ '{{ "sss"
+                                         if "debops_service_sssd" in group_names
+                                         else "ldap" }}' ]
+
                                                                    # ]]]
                                                                    # ]]]
 # LDAP lookup configuration [[[
