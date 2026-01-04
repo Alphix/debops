@@ -1,0 +1,49 @@
+{# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2023 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+{% if item.comment | d() %}
+# {{ item.name + ".conf" }} - {{ item.comment }}
+{% else %}
+# {{ item.name + ".conf" }}
+{% endif %}
+#
+# {{ ansible_managed }}
+{% macro print_section(section) %}
+{%   if section.state | d('present') not in [ 'absent', 'ignore' ] %}
+{{     '' }}
+{%     if section.comment | d() %}
+{{       section.comment | regex_replace('\n$', '') | comment(prefix='', decoration='#', postfix='') -}}
+{%     endif %}
+{%     set section_comment = ('#' if (section.state | d('present') in [ 'init', 'comment' ]) else '') %}
+{{     '{}[{}]'.format(section_comment, section.option | d(section.name)) }}
+{%     for element in section.options | d(section.value) | d([]) %}
+{%       if element.name | d() and element.value is defined and element.state | d('present') not in [ 'absent', 'ignore' ] %}
+{%         if element.comment | d() %}
+{{           element.comment | regex_replace('\n$', '') | comment(prefix='', decoration='#', postfix='') -}}
+{%         endif %}
+{%         set element_comment = ('#' if (element.state | d('present') in [ 'init', 'comment' ]) else section_comment) %}
+{%         set element_value = '' %}
+{%         if element.value is string %}
+{%           set element_value = element.value %}
+{%         elif element.value is sameas true %}
+{%           set element_value = 'yes' %}
+{%         elif element.value is sameas false %}
+{%           set element_value = 'no' %}
+{%         elif element.value is number %}
+{%           set element_value = element.value %}
+{%         elif element.value is iterable and element.value is not mapping %}
+{%           set element_value = element.value | join(' ') %}
+{%         endif %}
+{%         if element.quote | d(False) | bool %}
+{%           set element_value = '"{}"'.format(element_value) %}
+{%         endif %}
+{{         '  {}{}={}'.format(element_comment, element.option | d(element.name), element_value) }}
+{%       endif %}
+{%     endfor %}
+{%   endif %}
+{% endmacro %}
+{##}
+{% for section in item.options | d([]) %}
+{{   print_section(section) -}}
+{% endfor %}
