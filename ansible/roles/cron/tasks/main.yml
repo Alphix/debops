@@ -11,6 +11,18 @@
   ansible.builtin.import_role:
     name: 'global_handlers'
 
+- name: Ensure that the configuration is supported
+  ansible.builtin.assert:
+    that: cron__daemon in [ 'cron', 'systemd-cron' ]
+
+- name: Purge alternative cron daemons
+  ansible.builtin.apt:
+    name: '{{ cron__purge_packages | flatten }}'
+    state: 'absent'
+    purge: True
+  register: cron__register_apt_purge
+  until: cron__register_apt_purge is succeeded
+
 - name: Install cron packages
   ansible.builtin.package:
     name: '{{ q("flattened", (cron__base_packages
