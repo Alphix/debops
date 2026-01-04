@@ -178,7 +178,7 @@ rabbitmq_server__default_config:
     options:
 
       - name: 'versions'
-        value: [ 'tlsv1.2', 'tlsv1.1' ]
+        value: {{ rabbitmq_server__ssl_versions }}
         type: 'atom'
 
       - name: 'ciphers'
@@ -225,7 +225,7 @@ rabbitmq_server__default_config:
            {% if rabbitmq_server__ssl_dhparam %}
           {dhfile,               "{{ rabbitmq_server__ssl_dhparam }}"},
            {% endif -%}
-           {versions,             ['tlsv1.2', 'tlsv1.1']},
+           {versions,             [{{ ", ".join("'{}'".format(x) for x in rabbitmq_server__ssl_versions) }}]},
            {depth,                2},
            {% if rabbitmq_server__ssl_ciphers %}
           {ciphers,              [
@@ -893,13 +893,13 @@ rabbitmq_server__keyfile: '{{ rabbitmq_server__pki_path
                                                                    # ]]]
 # .. envvar:: rabbitmq_server__ssl_versions [[[
 #
-# List of TLS/SSL protocol versions supported by the RabbitMQ service.
-rabbitmq_server__ssl_versions: [ 'tlsv1.2', 'tlsv1.1' ]
+# List of TLS protocol versions supported by the RabbitMQ service.
+rabbitmq_server__ssl_versions: [ 'tlsv1.3', 'tlsv1.2' ]
 
                                                                    # ]]]
 # .. envvar:: rabbitmq_server__ssl_ciphers [[[
 #
-# A Erlang raw string which contains a list of TLS/SSL ciphers to allow by the
+# A Erlang raw string which contains a list of TLS ciphers to allow by the
 # server. Contents of this variable are gathered by the Ansible local facts.
 rabbitmq_server__ssl_ciphers: '{{ ansible_local.rabbitmq_server.raw_erlang_ssl_ciphers | d("") }}'
 

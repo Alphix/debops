@@ -485,7 +485,7 @@ mosquitto__ciphers: 'DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-SHA256:DHE-RSA-AES
                                                                    # ]]]
 # .. envvar:: mosquitto__tls_version [[[
 #
-# Specify the TLS version to use for encrypted connections.
+# Specify the minimum TLS version to use for encrypted connections.
 mosquitto__tls_version: 'tlsv1.2'
                                                                    # ]]]
                                                                    # ]]]

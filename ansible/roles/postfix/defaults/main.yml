@@ -347,7 +347,7 @@ postfix__original_maincf:
   - name: 'smtp_tls_client_comment'
     comment: |
       See /usr/share/doc/postfix/TLS_README.gz in the postfix-doc package for
-      information on enabling SSL in the smtp client.
+      information on enabling TLS in the smtp client.
     state: 'hidden'
     section: 'base'
 
@@ -459,7 +459,7 @@ postfix__default_maincf:
 #
 # The list of Postfix :file:`/etc/postfix/main.cf` configuration file options
 # defined by default by the ``debops.postfix`` Ansible role which configure
-# TLS/SSL encryption.
+# TLS encryption.
 postfix__tls_maincf:
 
   - name: 'smtp_tls_client_comment'
@@ -505,7 +505,10 @@ postfix__tls_maincf:
 
   - name: 'smtpd_tls_dh512_param_file'
     value: '{{ postfix__tls_dh512_param_file }}'
-    state: '{{ "present" if postfix__dhparam | bool else "ignore" }}'
+    state: '{{ "present"
+               if ((postfix__dhparam | bool) and
+                   (postfix__version is version_compare("3.6.0", "<")))
+               else "ignore" }}'
     section: 'smtpd-tls'
 
   - name: 'smtpd_tls_loglevel'
@@ -540,27 +543,51 @@ postfix__tls_maincf:
     section: 'smtpd-tls'
 
   - name: 'smtpd_tls_protocols'
-    value: [ '!SSLv2', '!SSLv3', '!TLSv1', 'TLSv1.1', 'TLSv1.2' ]
+    value: '{{ [ ">=TLSv1.2" ]
+               if (postfix__version is version_compare("3.6.0", ">="))
+               else
+               [ "!SSLv2", "!SSLv3", "!TLSv1", "!TLSv1.1", "TLSv1.2", "TLSv1.3" ]
+            }}'
     section: 'smtpd-tls'
 
   - name: 'smtp_tls_protocols'
-    value: [ '!SSLv2', '!SSLv3', '!TLSv1', 'TLSv1.1', 'TLSv1.2' ]
+    value: '{{ [ ">=TLSv1.2" ]
+               if (postfix__version is version_compare("3.6.0", ">="))
+               else
+               [ "!SSLv2", "!SSLv3", "!TLSv1", "!TLSv1.1", "TLSv1.2", "TLSv1.3" ]
+            }}'
     section: 'smtp-tls'
 
   - name: 'lmtp_tls_protocols'
-    value: [ '!SSLv2', '!SSLv3', '!TLSv1', 'TLSv1.1', 'TLSv1.2' ]
+    value: '{{ [ ">=TLSv1.2" ]
+               if (postfix__version is version_compare("3.6.0", ">="))
+               else
+               [ "!SSLv2", "!SSLv3", "!TLSv1", "!TLSv1.1", "TLSv1.2", "TLSv1.3" ]
+            }}'
     section: 'lmtp-tls'
 
   - name: 'smtpd_tls_mandatory_protocols'
-    value: [ '!SSLv2', '!SSLv3', '!TLSv1', 'TLSv1.1', 'TLSv1.2' ]
+    value: '{{ [ ">=TLSv1.2" ]
+               if (postfix__version is version_compare("3.6.0", ">="))
+               else
+               [ "!SSLv2", "!SSLv3", "!TLSv1", "!TLSv1.1", "TLSv1.2", "TLSv1.3" ]
+            }}'
     section: 'smtpd-tls'
 
   - name: 'smtp_tls_mandatory_protocols'
-    value: [ '!SSLv2', '!SSLv3', '!TLSv1', 'TLSv1.1', 'TLSv1.2' ]
+    value: '{{ [ ">=TLSv1.2" ]
+               if (postfix__version is version_compare("3.6.0", ">="))
+               else
+               [ "!SSLv2", "!SSLv3", "!TLSv1", "!TLSv1.1", "TLSv1.2", "TLSv1.3" ]
+            }}'
     section: 'smtp-tls'
 
   - name: 'lmtp_tls_mandatory_protocols'
-    value: [ '!SSLv2', '!SSLv3', '!TLSv1', 'TLSv1.1', 'TLSv1.2' ]
+    value: '{{ [ ">=TLSv1.2" ]
+               if (postfix__version is version_compare("3.6.0", ">="))
+               else
+               [ "!SSLv2", "!SSLv3", "!TLSv1", "!TLSv1.1", "TLSv1.2", "TLSv1.3" ]
+            }}'
     section: 'lmtp-tls'
 
   - name: 'smtpd_tls_ciphers'
@@ -795,7 +822,7 @@ postfix__maincf_sections:
     title: 'Virtual mail configuration'
 
   - name: 'tls'
-    title: 'TLS/SSL configuration'
+    title: 'TLS configuration'
 
   - name: 'smtpd-tls'
     title: 'SMTP Server (smtpd) TLS configuration'

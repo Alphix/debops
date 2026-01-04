@@ -439,7 +439,7 @@ imapproxy__default_configuration:
     state: '{{ "present" if imapproxy__pki | d(True) else "comment" }}'
 
   - name: 'tls_no_tlsv1.2'
-    value: 'no'
+    value: 'yes'
     state: '{{ "present" if imapproxy__pki | d(True) else "comment" }}'
 
   - name: 'auth_sasl_plain_username'
