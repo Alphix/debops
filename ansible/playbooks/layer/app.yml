@@ -12,6 +12,9 @@
 - name: Configure backup2l service
   import_playbook: '../service/backup2l.yml'
 
+- name: Configure borgbackup service
+  import_playbook: '../service/borgbackup.yml'
+
 - name: Configure rsnapshot service
   import_playbook: '../service/rsnapshot.yml'
 
@@ -65,6 +68,9 @@
 
 - name: Configure Roundcube application
   import_playbook: '../service/roundcube.yml'
+
+- name: Configure SnappyMail application
+  import_playbook: '../service/snappymail.yml'
 
 - name: Configure IMAP Proxy service
   import_playbook: '../service/imapproxy.yml'

@@ -1,0 +1,7 @@
+{# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2023 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+{% from 'macros.j2' import parse_options_to_json %}
+{% set plugin_options = parse_options_to_json(snappymail__plugin.options | d([])) | from_json %}
+{{ { "plugin": plugin_options } | to_json(indent=4) }}

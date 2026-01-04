@@ -51,6 +51,7 @@ etc.
 - :ref:`debops.prosody`
 - :ref:`debops.roundcube`
 - :ref:`debops.rstudio_server`
+- :ref:`debops.snappymail`
 - ``debops.phpmyadmin``
 - ``debops-contrib.foodsoft``
 - ``debops-contrib.homeassistant``
@@ -120,6 +121,7 @@ Backup
 ------
 
 - :ref:`debops.backup2l`
+- :ref:`debops.borgbackup`
 - :ref:`debops.rsnapshot`
 - ``debops.boxbackup``
 
@@ -248,6 +250,7 @@ Mail and SMS services
 - :ref:`debops.roundcube`
 - :ref:`debops.rspamd`
 - :ref:`debops.saslauthd`
+- :ref:`debops.snappymail`
 - ``debops.smstools``
 
 

@@ -1,0 +1,71 @@
+{# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+ # Copyright (C) 2023 DebOps <https://debops.org/>
+ # SPDX-License-Identifier: GPL-3.0-only
+ #}
+; SnappyMail configuration file
+; {{ ansible_managed }}
+; In addition, any customizations may be overwritten if web config is enabled.
+
+{% macro print_options(options) %}
+{%   for option in options %}
+{%     if option.state | d('present') not in [ 'absent', 'ignore', 'init' ] %}
+{%       if option.comment | d() %}
+{%         if not loop.first %}
+{{           '' }}
+{%         endif %}
+{{         option.comment | regex_replace('\n$', '') | comment(prefix='', decoration='; ', postfix='') -}}
+{%       endif %}
+{%       if option.raw | d() %}
+{%         if option.state | d('present') == 'comment' %}
+{{           '{}'.format(option.raw | regex_replace('\n$', '') | comment(prefix='', decoration=';', postfix='')) -}}
+{%         else %}
+{{           '{}'.format(option.raw | regex_replace('\n$', '')) }}
+{%         endif %}
+{%       elif option.option | d(option.name) and option.value is defined %}
+{%         set name = option.option | d(option.name) %}
+{%         if option.value is string and option.value == "0" %}
+{%           set value = 0 %}
+{%         elif option.value is string and option.value | int != 0 %}
+{%           set value = option.value | int %}
+{%         elif option.value is string %}
+{%           set value = '"' + option.value + '"' %}
+{%         elif option.value is sameas true %}
+{%           set value = "On" %}
+{%         elif option.value is sameas false %}
+{%           set value = "Off" %}
+{%         elif option.value is number %}
+{%           set value = option.value %}
+{%         elif option.value is iterable and option.value is not mapping %}
+{%           set value = [] %}
+{%           for x in option.value %}
+{%             if x.state | d('present') != 'absent' %}
+{{-              value.append(x.name) -}}
+{%             endif %}
+{%           endfor %}
+{%           set value = '"' + (values | join(",")) + '"' %}
+{%         else %}
+{%           set value = '"INVALID"' %}
+{%         endif %}
+{%         if option.state | d('present') == 'comment' %}
+{{           '; {} = {}'.format(name, value) }}
+{%         else %}
+{{           '{} = {}'.format(name, value) }}
+{%         endif %}
+{%       endif %}
+{%     endif %}
+{%   endfor %}
+{% endmacro %}
+{##}
+{% for section in snappymail__var_configuration | parse_kv_items(name='section') %}
+{%   if section.state | d('present') not in [ 'absent', 'init', 'ignore' ] %}
+{%     if section.options | d() %}
+{%       if (['present', 'comment'] | intersect(section.options | map(attribute='state') | list)) %}
+{{         ("[{}]").format(section.section) }}
+{%         if section.comment|d() %}
+{{           section.comment | regex_replace('\n$', '') | comment(prefix='', decoration='; ', postfix='') -}}
+{%         endif %}
+{%       endif %}
+{{       print_options(section.options) }}
+{%     endif %}
+{%   endif %}
+{% endfor %}

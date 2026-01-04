@@ -1,0 +1,30 @@
+#!{{ ansible_python['executable'] }}
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2023 DebOps <https://debops.org/>
+# SPDX-License-Identifier: GPL-3.0-only
+
+# {{ ansible_managed }}
+
+from __future__ import print_function
+from json import loads, dumps
+import os
+
+snappymail_data_dir = '{{ snappymail__data_dir }}'
+
+snappymail_version_file = (snappymail_data_dir + '/VERSION')
+
+output = {'installed': False}
+
+try:
+    with open(snappymail_version_file, 'r') as f:
+        version = f.read().strip()
+        output.update(
+            {'installed': True,
+             'version': version})
+
+except Exception:
+    pass
+
+print(dumps(output, sort_keys=True, indent=4))
