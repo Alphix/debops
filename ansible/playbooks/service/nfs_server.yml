@@ -1,6 +1,7 @@
 ---
 # Copyright (C) 2017 Maciej Delmanowski <drybjed@gmail.com>
-# Copyright (C) 2017 DebOps <https://debops.org/>
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2017-2023 DebOps <https://debops.org/>
 # SPDX-License-Identifier: GPL-3.0-only
 
 - name: Configure NFS Server
@@ -29,6 +30,12 @@
       tags: [ 'role::tcpwrappers', 'skip::tcpwrappers' ]
       tcpwrappers__dependent_allow:
         - '{{ nfs_server__tcpwrappers__dependent_allow }}'
+
+    - role: gssproxy
+      tags: [ 'role::gssproxy', 'skip::gssproxy' ]
+      gssproxy__dependent_configuration:
+        - '{{ nfs_server__gssproxy__dependent_configuration }}'
+      when: nfs_server__kerberos | d(False) | bool
 
     - role: nfs_server
       tags: [ 'role::nfs_server', 'skip::nfs_server' ]

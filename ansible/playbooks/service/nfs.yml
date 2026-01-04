@@ -1,6 +1,7 @@
 ---
 # Copyright (C) 2013-2017 Maciej Delmanowski <drybjed@gmail.com>
-# Copyright (C) 2015-2017 DebOps <https://debops.org/>
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2015-2023 DebOps <https://debops.org/>
 # SPDX-License-Identifier: GPL-3.0-only
 
 - name: Manage NFS shares
@@ -14,6 +15,10 @@
                    | combine(inventory__host_environment  | d({})) }}'
 
   roles:
+
+    - role: cachefilesd
+      tags: [ 'role::cachefilesd', 'skip::cachefilesd' ]
+      when: nfs__cache | d(False) | bool
 
     - role: nfs
       tags: [ 'role::nfs', 'skip::nfs' ]

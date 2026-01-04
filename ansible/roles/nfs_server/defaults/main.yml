@@ -2,7 +2,8 @@
 # .. vim: foldmarker=[[[,]]]:foldmethod=marker
 
 # .. Copyright (C) 2017 Maciej Delmanowski <drybjed@gmail.com>
-# .. Copyright (C) 2017 DebOps <https://debops.org/>
+# .. Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# .. Copyright (C) 2017-2023 DebOps <https://debops.org/>
 # .. SPDX-License-Identifier: GPL-3.0-only
 
 # .. _nfs_server__ref_defaults:
@@ -29,6 +30,7 @@ nfs_server__base_packages: [ 'nfs-kernel-server', 'acl' ]
 #
 # List of additional APT packages to install with the NFS server.
 nfs_server__packages: []
+
                                                                    # ]]]
                                                                    # ]]]
 # Firewall configuration [[[
@@ -82,6 +84,7 @@ nfs_server__service_ports:
 # List of TCP/UDP ports which should be opened in the firewall for NFS access.
 nfs_server__firewall_ports: '{{ (["nfs", "sunrpc"] + (nfs_server__service_ports.keys() | list))
                                 if nfs_server__v3 | bool else ["nfs"] }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # NFS server configuration [[[
@@ -94,6 +97,411 @@ nfs_server__firewall_ports: '{{ (["nfs", "sunrpc"] + (nfs_server__service_ports.
 nfs_server__v3: False
 
                                                                    # ]]]
+# .. envvar:: nfs_server__default_configuration [[[
+#
+# List of the default configuration options for the NFS daemons and tools
+# defined by the role.
+nfs_server__default_configuration:
+
+  - name: 'general'
+    options:
+
+      - name: 'pipefs-directory'
+        value: '/run/rpc_pipefs'
+
+  - name: 'nfsrahead'
+    options:
+
+      - name: 'nfs'
+        value: 15000
+        state: 'comment'
+
+      - name: 'nfs4'
+        value: 16000
+        state: 'comment'
+
+  - name: 'exports'
+    options:
+
+      - name: 'rootdir'
+        value: '/export'
+        state: 'comment'
+
+  - name: 'exportfs'
+    options:
+
+      - name: 'debug'
+        value: 0
+        state: 'comment'
+
+  - name: 'gssd'
+    options:
+
+      - name: 'verbosity'
+        value: 0
+        state: 'comment'
+
+      - name: 'rpc-verbosity'
+        value: 0
+        state: 'comment'
+
+      - name: 'use-memcache'
+        value: 0
+        state: 'comment'
+
+      - name: 'use-machine-creds'
+        value: 1
+        state: 'comment'
+
+      - name: 'use-gss-proxy'
+        value: 0
+        state: 'comment'
+
+      - name: 'avoid-dns'
+        value: 1
+        state: 'comment'
+
+      - name: 'limit-to-legacy-enctypes'
+        value: 0
+        state: 'comment'
+
+      - name: 'context-timeout'
+        value: 0
+        state: 'comment'
+
+      - name: 'rpc-timeout'
+        value: 5
+        state: 'comment'
+
+      - name: 'keytab-file'
+        value: '/etc/krb5.keytab.d/nfs.keytab'
+
+      - name: 'cred-cache-directory'
+        value: ''
+        state: 'comment'
+
+      - name: 'preferred-realm'
+        value: ''
+        state: 'comment'
+
+      - name: 'set-home'
+        value: 1
+        state: 'comment'
+
+      - name: 'upcall-timeout'
+        value: 30
+        state: 'comment'
+
+      - name: 'cancel-timed-out-upcalls'
+        value: 0
+        state: 'comment'
+
+  - name: 'lockd'
+    options:
+
+      - name: 'port'
+        value: '{{ nfs_server__service_ports["rpc.lockd"]
+                   if nfs_server__v3 | bool else "0" }}'
+        state: '{{ "present" if nfs_server__v3 | bool else "comment" }}'
+
+      - name: 'udp-port'
+        value: '{{ nfs_server__service_ports["rpc.lockd"]
+                   if nfs_server__v3 | bool else "0" }}'
+        state: '{{ "present" if nfs_server__v3 | bool else "comment" }}'
+
+  - name: 'exportd'
+    options:
+
+      - name: 'debug'
+        value: 'all|auth|call|general|parse'
+        quote: True
+        state: 'comment'
+
+      - name: 'manage-gids'
+        value: 'n'
+        state: 'comment'
+
+      - name: 'state-directory-path'
+        value: '/var/lib/nfs'
+        state: 'comment'
+
+      - name: 'threads'
+        value: 1
+        state: 'comment'
+
+      - name: 'cache-use-ipaddr'
+        value: 'n'
+        state: 'comment'
+
+      - name: 'ttl'
+        value: 1800
+        state: 'comment'
+
+  - name: 'mountd'
+    options:
+
+      - name: 'debug'
+        value: 'all|auth|call|general|parse'
+        quote: True
+        state: 'comment'
+
+      - name: 'manage-gids'
+        value: 'y'
+
+      - name: 'descriptors'
+        value: 0
+        state: 'comment'
+
+      - name: 'port'
+        value: '{{ nfs_server__service_ports["rpc.mountd"]
+                   if nfs_server__v3 | bool else "0" }}'
+        state: '{{ "present" if nfs_server__v3 | bool else "comment" }}'
+
+      - name: 'threads'
+        value: 1
+        state: 'comment'
+
+      - name: 'reverse-lookup'
+        value: 'n'
+        state: 'comment'
+
+      - name: 'state-directory-path'
+        value: '/var/lib/nfs'
+        state: 'comment'
+
+      - name: 'ha-callout'
+        value: ''
+        state: 'comment'
+
+      - name: 'cache-use-ipaddr'
+        value: 'n'
+        state: 'comment'
+
+      - name: 'ttl'
+        value: 1800
+        state: 'comment'
+
+  - name: 'nfsdcld'
+    options:
+
+      - name: 'debug'
+        value: 0
+        state: 'comment'
+
+      - name: 'storagedir'
+        value: '/var/lib/nfs/nfsdcld'
+        state: 'comment'
+
+  - name: 'nfsdcltrack'
+    options:
+
+      - name: 'debug'
+        value: 0
+        state: 'comment'
+
+      - name: 'storagedir'
+        value: '/var/lib/nfs/nfsdcltrack'
+        state: 'comment'
+
+  - name: 'nfsd'
+    options:
+
+      - name: 'debug'
+        value: 0
+        state: 'comment'
+
+      - name: 'threads'
+        value: '{{ ansible_processor_vcpus | int * 2 }}'
+
+      - name: 'host'
+        value: ''
+        state: 'comment'
+
+      - name: 'port'
+        value: 0
+        state: 'comment'
+
+      - name: 'grace-time'
+        value: 90
+        state: 'comment'
+
+      - name: 'lease-time'
+        value: 90
+        state: 'comment'
+
+      - name: 'udp'
+        value: '{{ "y" if nfs_server__v3 | bool else "n" }}'
+        state: '{{ "present" if nfs_server__v3 | bool else "comment" }}'
+
+      - name: 'tcp'
+        value: 'y'
+        state: 'comment'
+
+      - name: 'vers3'
+        value: '{{ "y" if nfs_server__v3 | bool else "n" }}'
+        state: 'present'
+
+      - name: 'vers4'
+        value: 'y'
+        state: 'comment'
+
+      - name: 'vers4.0'
+        value: 'y'
+        state: 'comment'
+
+      - name: 'vers4.1'
+        value: 'y'
+        state: 'comment'
+
+      - name: 'vers4.2'
+        value: 'y'
+        state: 'comment'
+
+      - name: 'rdma'
+        value: 'n'
+        state: 'comment'
+
+      - name: 'rdma-port'
+        value: 20049
+        state: 'comment'
+
+  - name: 'statd'
+    options:
+
+      - name: 'debug'
+        value: 0
+        state: 'comment'
+
+      - name: 'port'
+        value: '{{ nfs_server__service_ports["rpc.statd"]
+                   if nfs_server__v3 | bool else "0" }}'
+        state: '{{ "present" if nfs_server__v3 | bool else "comment" }}'
+
+      - name: 'outgoing-port'
+        value: '{{ nfs_server__service_ports["rpc.statd-bc"]
+                   if nfs_server__v3 | bool else "0" }}'
+        state: '{{ "present" if nfs_server__v3 | bool else "comment" }}'
+
+      - name: 'name'
+        value: ''
+        state: 'comment'
+
+      - name: 'state-directory-path'
+        value: '/var/lib/nfs/statd'
+        state: 'comment'
+
+      - name: 'ha-callout'
+        value: ''
+        state: 'comment'
+
+      - name: 'no-notify'
+        value: 0
+        state: 'comment'
+
+  - name: 'sm-notify'
+    options:
+
+      - name: 'debug'
+        value: 0
+        state: 'comment'
+
+      - name: 'force'
+        value: 0
+        state: 'comment'
+
+      - name: 'retry-time'
+        value: 900
+        state: 'comment'
+
+      - name: 'outgoing-port'
+        value: ''
+        state: 'comment'
+
+      - name: 'outgoing-addr'
+        value: ''
+        state: 'comment'
+
+      - name: 'lift-grace'
+        value: 'y'
+        state: 'comment'
+
+  - name: 'svcgssd'
+    options:
+
+      - name: 'principal'
+        value: ''
+        state: 'comment'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__configuration [[[
+#
+# List of the configuration options which should be present on all hosts in the
+# Ansible inventory.
+nfs_server__configuration: []
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__group_configuration [[[
+#
+# List of the configuration options which should be present on hosts in a
+# specific Ansible inventory group.
+nfs_server__group_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__host_configuration [[[
+#
+# List of the configuration options which should be present on specific hosts
+# in the Ansible inventory.
+nfs_server__host_configuration: []
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__combined_configuration [[[
+#
+# Variable which combines all configuration lists and is used in the role
+# tasks and templates.
+nfs_server__combined_configuration: '{{ nfs_server__default_configuration
+                                        + nfs_server__configuration
+                                        + nfs_server__group_configuration
+                                        + nfs_server__host_configuration }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__kerberos [[[
+#
+# Enable or disable Kerberos support.
+nfs_server__kerberos: '{{ ansible_local.kerberos.enabled | d(False) }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__kerberos_princ [[[
+#
+# The Kerberos principal for the nfs service.
+nfs_server__kerberos_princ: '{{ "nfs/" + ansible_fqdn + "@"
+                                + (ansible_local.kerberos.default_realm |
+                                   d(nfs_server__kerberos_realms | list | first | upper)) }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__kerberos_realms [[[
+#
+# List or string with local Kerberos realms.
+nfs_server__kerberos_realms: '{{ ansible_local.kerberos.default_realm
+                                 | d(ansible_domain) | upper }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__domain [[[
+#
+# The local NFSv4 domain name. An NFSv4 domain is a namespace with a unique
+# username<->UID and groupname<->GID mapping. The NFSv4 domain is therefore
+# separate from the actual server domain or Kerberos realm(s). The default
+# should be fine for most users.
+nfs_server__domain: '{{ ansible_local.kerberos.default_realm
+                        | d(ansible_domain) | lower }}'
+
+                                                                   # ]]]
+                                                                   # ]]]
+# Legacy NFS server configuration [[[
+# -----------------------------------
+# The configuration options in this section will be written to
+# :file:`/etc/default/nfs-kernel-server`, which is only used on pre-Bookworm
+# Debian releases.
+
 # .. envvar:: nfs_server__threads [[[
 #
 # Number of :command:`nfsd` threads to run. This depends on several factors,
@@ -111,20 +519,14 @@ nfs_server__priority: '0'
                                                                    # ]]]
 # .. envvar:: nfs_server__mountd_options [[[
 #
-# The arguments passed to the ;command:`rpc.mountd` process.
-nfs_server__mountd_options: '--manage-gids --port {{ nfs_server__service_ports["rpc.mountd"] }}'
+# List or string with arguments to pass to the :command:`rpc.mountd` process.
+nfs_server__mountd_options:
+  - '--manage-gids'
+  - '--no-nfs-version 2'
+  - '{{ [ "--port " + nfs_server__service_ports["rpc.mountd"] ]
+        if nfs_server__v3 | bool else
+        [ "--no-nfs-version 3", "--no-udp", "--no-tcp" ] }}'
 
-                                                                   # ]]]
-# .. envvar:: nfs_server__kerberos [[[
-#
-# Enable or disable Kerberos support.
-nfs_server__kerberos: False
-
-                                                                   # ]]]
-# .. envvar:: nfs_server__svcgssd_options [[[
-#
-# Arguments passed to the ``rpc.svcgssd`` process.
-nfs_server__svcgssd_options: ''
                                                                    # ]]]
                                                                    # ]]]
 # NFS4 root pseudo-filesystem [[[
@@ -148,7 +550,9 @@ nfs_server__root_options: [ 'rw', 'fsid=root', 'sync', 'subtree_check', 'crossmn
 #
 # List of NFS4 security options that are used to export the NFS4 root
 # filesystem.
-nfs_server__root_security_options: '{{ ["sec=krb5p"] if nfs_server__kerberos | bool else [] }}'
+nfs_server__root_security_options: '{{ ["sec=krb5p"]
+                                       if nfs_server__kerberos | d(False) | bool
+                                       else [] }}'
 
                                                                    # ]]]
 # .. envvar:: nfs_server__root_acl [[[
@@ -156,6 +560,7 @@ nfs_server__root_security_options: '{{ ["sec=krb5p"] if nfs_server__kerberos | b
 # The Access Control List of NFS clients that are allowed to mount the NFS4
 # root filesystem. See :ref:`nfs_server__ref_exports` for more details.
 nfs_server__root_acl: '{{ "*" if nfs_server__accept_any | bool else nfs_server__allow }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # NFS server exports [[[
@@ -202,9 +607,12 @@ nfs_server__host_exports: []
 #
 # All of the NFS exports lists are combined in this variable and passed to
 # tasks and templates in the role.
-nfs_server__combined_exports: '{{ lookup("flattened", nfs_server__default_exports
-                                  + nfs_server__exports + nfs_server__group_exports
-                                  + nfs_server__host_exports) }}'
+nfs_server__combined_exports: '{{ q("flattened",
+                                    nfs_server__default_exports
+                                    + nfs_server__exports
+                                    + nfs_server__group_exports
+                                    + nfs_server__host_exports) }}'
+
                                                                    # ]]]
                                                                    # ]]]
 # Configuration for other Ansible roles [[[
@@ -252,12 +660,46 @@ nfs_server__tcpwrappers__dependent_allow:
 #
 # Configuration for the :ref:`debops.ferm` Ansible role.
 nfs_server__ferm__dependent_rules:
+
   - name: 'nfs_server'
     type: 'accept'
     dport: '{{ nfs_server__firewall_ports }}'
     protocol: '{{ nfs_server__firewall_protocols }}'
     saddr: '{{ nfs_server__allow }}'
     accept_any: '{{ nfs_server__accept_any }}'
+
+                                                                   # ]]]
+# .. envvar:: nfs_server__gssproxy__dependent_configuration [[[
+#
+# Configuration for the :ref:`debops.gssproxy` Ansible role.
+nfs_server__gssproxy__dependent_configuration:
+
+  - name: '24-nfs-server'
+    comment: 'See https://github.com/gssapi/gssproxy/blob/main/docs/NFS.md'
+    state: '{{ "present" if nfs_server__kerberos | d(False) | bool else "ignore" }}'
+    options:
+
+      - name: 'service/nfs-server'
+        options:
+
+          - name: 'mechs'
+            value: 'krb5'
+
+          - name: 'socket'
+            value: '/run/gssproxy.sock'
+
+          - name: 'cred_store'
+            value: 'keytab:/etc/krb5.keytab.d/nfs.keytab'
+
+          - name: 'trusted'
+            value: True
+
+          - name: 'kernel_nfsd'
+            value: True
+
+          - name: 'euid'
+            value: 0
+
                                                                    # ]]]
                                                                    # ]]]
                                                                    # ]]]

@@ -1,7 +1,12 @@
 ---
 # Copyright (C) 2013-2017 Maciej Delmanowski <drybjed@gmail.com>
-# Copyright (C) 2015-2017 DebOps <https://debops.org/>
+# Copyright (C) 2023 David Härdeman <david@hardeman.nu>
+# Copyright (C) 2015-2023 DebOps <https://debops.org/>
 # SPDX-License-Identifier: GPL-3.0-only
+
+- name: Import DebOps global handlers
+  import_role:
+    name: 'global_handlers'
 
 - name: Install required packages
   ansible.builtin.package:
@@ -13,14 +18,23 @@
 
 - name: Configure NFS client
   ansible.builtin.template:
-    src: '{{ item }}.j2'
-    dest: '/{{ item }}'
+    src: 'etc/default/nfs-common.j2'
+    dest: '/etc/default/nfs-common'
     owner: 'root'
     group: 'root'
     mode: '0644'
-  with_items:
-    - 'etc/default/nfs-common'
-  register: nfs__register_config
+
+- name: Configure NFSv4 ID-name mapping
+  ansible.builtin.template:
+    src: 'etc/idmapd.conf.j2'
+    dest: '/etc/idmapd.conf'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  notify: [ 'Restart rpc-gssd service' ]
+
+- name: Restart NFS services before attempting mounts, if necessary
+  ansible.builtin.meta: 'flush_handlers'
 
 - name: Ensure that the NFS mount points exist
   ansible.builtin.file:
@@ -32,7 +46,7 @@
   loop: '{{ q("flattened", nfs__shares
                            + nfs__group_shares
                            + nfs__host_shares) }}'
-  when: item.path | d() and item.src | d() and item.state | d('mounted') == 'present'
+  when: item.path | d() and item.src | d() and item.state | d('mounted') in ['present', 'mounted']
 
 - name: Manage NFS mount points
   ansible.posix.mount:
@@ -55,6 +69,6 @@
     name: 'remote-fs.target'
     state: 'restarted'
     daemon_reload: True
-  loop: '{{ nfs__register_devices.results }}'
-  when: (ansible_service_mgr == 'systemd' and item is changed and
+  when: (ansible_service_mgr == 'systemd' and
+         true in (nfs__register_devices.results | map(attribute="changed")) and
          (lookup("template", "lookup/mount_options.j2") is match(".*x-systemd.automount.*")))

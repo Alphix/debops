@@ -14,6 +14,7 @@ debops.nfs_server
    man_description
    getting-started
    defaults-detailed
+   kerberos
 
 ..
  Local Variables:
